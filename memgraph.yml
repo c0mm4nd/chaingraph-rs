@@ -1,0 +1,17 @@
+version: "3"
+services:
+  memgraph-platform:
+    container_name: memgraph
+    image: "memgraph/memgraph-platform"
+    ports:
+      - "7687:7687"
+      - "3000:3000"
+      - "7444:7444"
+    volumes:
+      - /mnt/hdd4t/memgraph/lib:/var/lib/memgraph
+      - /mnt/hdd4t/memgraph/log:/var/log/memgraph
+      - /mnt/hdd4t/memgraph/conf:/etc/memgraph
+      - /mnt/hdd4t/memgraph/data:/data
+    environment:
+      - MEMGRAPH="--log-level=TRACE"
+    entrypoint: ["/usr/bin/supervisord"]

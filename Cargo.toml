@@ -1,0 +1,23 @@
+[package]
+name = "chaingraph"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+indradb-lib = { version = "*", features = ["rocksdb-datastore"] }
+tokio = "1.24.2"
+csv = "1.1"
+serde = { version = "1", features = ["derive"] }
+ethers = "1"
+crossbeam = "0.8"
+
+[dependencies.uuid]
+version = "1.2"
+features = [
+    "v4",                # Lets you generate random UUIDs
+    "v5",
+    "fast-rng",          # Use a faster (but still sufficiently random) RNG
+    "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
+]

@@ -1,0 +1,10 @@
+version: "3"
+services:
+  memgraph-platform:
+    container_name: indra
+    image: indradb-server
+    ports:
+      - "27615:27615"
+    volumes:
+      - /mnt/hdd4t/indra/data:/data
+    command: -a 0.0.0.0:27615 rocksdb /data/indra.rocksdb 
