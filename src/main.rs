@@ -1,64 +1,117 @@
+use clap::{Parser, command, arg};
 use crossbeam::deque::{Worker, Steal, Stealer};
 use indradb::{
-    Datastore, EdgeKey, Identifier, MemoryDatastore, SpecificEdgeQuery, SpecificVertexQuery, Vertex, RocksdbDatastore,
+    Datastore, Identifier, MemoryDatastore, SpecificEdgeQuery, SpecificVertexQuery, Vertex, RocksdbDatastore, Edge, Database, BulkInsertItem, CountQuery, CountQueryExt, AllEdgeQuery, AllVertexQuery,
+    QueryOutputValue, QueryOutputValue::Count,
 };
 use uuid::Uuid;
-use std::{fs::File, io::{self, BufRead}, collections::HashMap, str::FromStr, thread, time::Duration};
+use std::{fs::File, io::{self, BufRead}, collections::HashMap, str::FromStr, thread, time::Duration, borrow::Borrow};
 use ethers::prelude::*;
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+   /// CSV File Path
+   #[arg(short, long)]
+   csv: String,
+
+   /// Start line number
+   #[arg(short, long, default_value_t = 0)]
+   fail: usize,
+
+      /// Rocksdb Path
+      #[arg(short, long, default_value = "rocks")]
+      rocks: String,
+}
+
+type Record = HashMap<String, String>;
 
 // #[tokio::main]
 fn main() {
-    // Create an in-memory datastore
-    let mut datastore = RocksdbDatastore::new("rocks", None).unwrap();
+    let args = Args::parse();
 
-    // Create a couple of vertices
-    type Record = HashMap<String, String>;
+    let mut opts = rocksdb::Options::default();
+    opts.create_if_missing(true);
+    opts.increase_parallelism(num_cpus::get().try_into().unwrap());
+    opts.set_compaction_style(rocksdb::DBCompactionStyle::Level);
+    opts.set_write_buffer_size(0x80000000); // 64mb
+    opts.set_max_write_buffer_number(3);
+    opts.set_target_file_size_base(67_108_864); // 64mb
+    opts.set_level_zero_file_num_compaction_trigger(8);
+    // opts.set_level_zero_slowdown_writes_trigger(17);
+    opts.set_level_zero_slowdown_writes_trigger(-1);
+    opts.set_level_zero_stop_writes_trigger(24);
+    opts.set_num_levels(4);
+    opts.set_max_bytes_for_level_base(536_870_912); // 512mb
+    opts.set_max_bytes_for_level_multiplier(8.0);
+    opts.enable_statistics();
+    opts.set_disable_auto_compactions(true);
+
+    let mut datastore = RocksdbDatastore::new_db_with_options(args.rocks, opts).unwrap();
+    let v_count: usize = match datastore.get(AllVertexQuery.count().unwrap()).unwrap()[0] {
+        QueryOutputValue::Count(count) => count.try_into().unwrap(),
+        _ => todo!(),
+    };
+    println!("all node: {:?}", v_count);
+    let e_count: usize = match datastore.get(AllEdgeQuery.count().unwrap()).unwrap()[0] {
+        QueryOutputValue::Count(count) => count.try_into().unwrap(),
+        _ => todo!(),
+    };
+    println!("all edge: {:?}", e_count);
+
+    let mut items = Vec::new();
+    let mut reader = csv::Reader::from_path(args.csv).unwrap();
     
-    let mut reader = csv::Reader::from_path("/mnt/hdd4t/chaingraph/nodes_nodup_0-16200000.csv").unwrap();
-    for (index, result) in reader.deserialize().enumerate() {
-        let record: Record = result.unwrap(); 
-        let addr = &record["addr:ID"];
+    let mut fail: usize = e_count;
 
-        let v = Vertex::with_id(addr_to_uuid(addr.as_str()), Identifier::new(addr).unwrap());
-        let ok = datastore.create_vertex(&v).unwrap();
-        assert!(ok);
-        // println!("{}: {:?}", index, record);
-        println!("pushed addr: #{}", index);
+    if args.fail != 0 {
+        fail = args.fail
     }
 
-    let mut reader = csv::Reader::from_path("txs_0-16200000.out").unwrap();
     for (index, result) in reader.deserialize().enumerate() {
+        if index < fail {
+            continue;
+        }
+
         let record: Record = result.unwrap();
-        let from = &record["from"];
-        let to = &record["to"];
-        let hash = &record["hash"];
-        // let block_num_hexstr = &record["block_number"];
+        job(record, &mut items);
+        if index % 10000 == 9999 {
 
-        let edge = EdgeKey::new(addr_to_uuid(from), Identifier::new(hash).unwrap(), addr_to_uuid(to));
-        let ok = datastore.create_edge(&edge).unwrap();
-        assert!(ok);
+            datastore.bulk_insert(items).unwrap();
+            items = Vec::new();
+            println!("pushed edge #{} -> #{}", index - 999, index);
 
-        println!("pushed edge #{}", index);
+            // println!("{}", statistics.get_statistics().unwrap())
+        }
     }
-
-    // let v = Vertex::new(Identifier::new("").unwrap());
-    // datastore.create_vertex(&out_v).unwrap();
-    // datastore.create_vertex(&in_v).unwrap();
-
-    // // Add an edge between the vertices
-    // let key = EdgeKey::new(out_v.id, Identifier::new("likes").unwrap(), in_v.id);
-    // datastore.create_edge(&key).unwrap();
-
-    // // Query for the edge
-    // let e = datastore
-    //     .get_edges(SpecificEdgeQuery::single(key.clone()).into())
-    //     .unwrap();
-    // assert_eq!(e.len(), 1);
-    // assert_eq!(key, e[0].key);
 }
 
 fn addr_to_uuid(addr: &str) -> Uuid {
     let address = Address::from_str(addr).unwrap();
     let id = Uuid::new_v5(&Uuid::NAMESPACE_OID, address.as_bytes());
     return id;
+}
+
+fn job(record: Record, items: &mut Vec<BulkInsertItem>) {
+    let from = &record["from"];
+    let to = &record["to"];
+    let hash = &record["hash"];
+    // let block_num_hexstr = &record["block_number"];
+
+    let from_id = addr_to_uuid(from.as_str());
+    let v = Vertex::with_id(from_id, Identifier::new(from).unwrap());
+    items.push(indradb::BulkInsertItem::Vertex(v));
+
+    let to_id = addr_to_uuid(to.as_str());
+    let v = Vertex::with_id(to_id, Identifier::new(to).unwrap());
+    items.push(indradb::BulkInsertItem::Vertex(v));
+
+    let edge = Edge::new(
+        from_id,
+        Identifier::new(hash).unwrap(),
+        to_id,
+    );
+    items.push(indradb::BulkInsertItem::Edge(edge))
+
+    // println!("pushed edge #{}", index); // 210_260_957 1_807_472_442
 }
