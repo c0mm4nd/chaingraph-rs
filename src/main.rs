@@ -1,33 +1,48 @@
-use clap::{Parser, command, arg};
-use crossbeam::deque::{Worker, Steal, Stealer};
+use clap::{arg, command, Parser};
+use crossbeam::deque::{Steal, Stealer, Worker};
+use ethers::prelude::*;
 use indradb::{
-    Datastore, Identifier, MemoryDatastore, SpecificEdgeQuery, SpecificVertexQuery, Vertex, RocksdbDatastore, Edge, Database, BulkInsertItem, CountQuery, CountQueryExt, AllEdgeQuery, AllVertexQuery,
-    QueryOutputValue, QueryOutputValue::Count,
+    AllEdgeQuery, AllVertexQuery, BulkInsertItem, CountQuery, CountQueryExt, Database, Datastore,
+    Edge, Identifier, MemoryDatastore, QueryOutputValue, QueryOutputValue::Count, RocksdbDatastore,
+    SpecificEdgeQuery, SpecificVertexQuery, Vertex,
+};
+use std::{
+    borrow::Borrow,
+    collections::HashMap,
+    fs::File,
+    io::{self, BufRead},
+    str::FromStr,
+    thread,
+    time::Duration,
 };
 use uuid::Uuid;
-use std::{fs::File, io::{self, BufRead}, collections::HashMap, str::FromStr, thread, time::Duration, borrow::Borrow};
-use ethers::prelude::*;
+extern crate pretty_env_logger;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-   /// CSV File Path
-   #[arg(short, long)]
-   csv: String,
+    /// CSV File Path
+    #[arg(short, long)]
+    csv: String,
 
-   /// Start line number
-   #[arg(short, long, default_value_t = 0)]
-   fail: usize,
+    /// Start line number
+    #[arg(short, long, default_value_t = 0)]
+    fail: usize,
 
-      /// Rocksdb Path
-      #[arg(short, long, default_value = "rocks")]
-      rocks: String,
+    /// Rocksdb Path
+    #[arg(short, long, default_value = "rocks")]
+    rocks: String,
+
+    /// Bulk insert number
+    #[arg(short, long, default_value_t = 10_000)]
+    bulk: usize,
 }
 
 type Record = HashMap<String, String>;
 
 // #[tokio::main]
 fn main() {
+    pretty_env_logger::init();
     let args = Args::parse();
 
     let mut opts = rocksdb::Options::default();
@@ -57,17 +72,18 @@ fn main() {
         QueryOutputValue::Count(count) => count.try_into().unwrap(),
         _ => todo!(),
     };
-    println!("all edge: {:?}", e_count);
+    log::warn!("all edge: {:?}", e_count);
 
     let mut items = Vec::new();
     let mut reader = csv::Reader::from_path(args.csv).unwrap();
-    
+
     let mut fail: usize = e_count;
 
     if args.fail != 0 {
         fail = args.fail
     }
 
+    let trigger = args.bulk - 1;
     for (index, result) in reader.deserialize().enumerate() {
         if index < fail {
             continue;
@@ -75,11 +91,10 @@ fn main() {
 
         let record: Record = result.unwrap();
         job(record, &mut items);
-        if index % 10000 == 9999 {
-
+        if index % args.bulk == trigger {
             datastore.bulk_insert(items).unwrap();
             items = Vec::new();
-            println!("pushed edge #{} -> #{}", index - 999, index);
+            log::warn!("pushed edge #{} -> #{}", index - 999, index);
 
             // println!("{}", statistics.get_statistics().unwrap())
         }
@@ -106,11 +121,7 @@ fn job(record: Record, items: &mut Vec<BulkInsertItem>) {
     let v = Vertex::with_id(to_id, Identifier::new(to).unwrap());
     items.push(indradb::BulkInsertItem::Vertex(v));
 
-    let edge = Edge::new(
-        from_id,
-        Identifier::new(hash).unwrap(),
-        to_id,
-    );
+    let edge = Edge::new(from_id, Identifier::new(hash).unwrap(), to_id);
     items.push(indradb::BulkInsertItem::Edge(edge))
 
     // println!("pushed edge #{}", index); // 210_260_957 1_807_472_442
