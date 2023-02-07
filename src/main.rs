@@ -43,7 +43,7 @@ type Record = HashMap<String, String>;
 
 // #[tokio::main]
 fn main() {
-    pretty_env_logger::init();
+    pretty_env_logger::init_timed();
     let args = Args::parse();
 
     let mut opts = rocksdb::Options::default();
@@ -95,12 +95,12 @@ fn main() {
         if index % args.bulk == trigger {
             datastore.bulk_insert(items).unwrap();
             items = Vec::new();
-            datastore.sync().unwrap();
+            // datastore.sync().unwrap();
             log::warn!("pushed edge #{} -> #{}", index - 999, index);
             // println!("{}", statistics.get_statistics().unwrap())
         }
     }
-    drop(datastore);
+    // drop(datastore);
 }
 
 fn addr_to_uuid(addr: &str) -> Uuid {
