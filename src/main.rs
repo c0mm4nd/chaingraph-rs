@@ -6,6 +6,7 @@ use indradb::{
     Edge, Identifier, MemoryDatastore, QueryOutputValue, QueryOutputValue::Count, RocksdbDatastore,
     SpecificEdgeQuery, SpecificVertexQuery, Vertex,
 };
+use rocksdb::DB;
 use std::{
     borrow::Borrow,
     collections::HashMap,
@@ -67,7 +68,7 @@ fn main() {
         QueryOutputValue::Count(count) => count.try_into().unwrap(),
         _ => todo!(),
     };
-    println!("all node: {:?}", v_count);
+    log::warn!("all node: {:?}", v_count);
     let e_count: usize = match datastore.get(AllEdgeQuery.count().unwrap()).unwrap()[0] {
         QueryOutputValue::Count(count) => count.try_into().unwrap(),
         _ => todo!(),
@@ -94,11 +95,12 @@ fn main() {
         if index % args.bulk == trigger {
             datastore.bulk_insert(items).unwrap();
             items = Vec::new();
+            datastore.sync().unwrap();
             log::warn!("pushed edge #{} -> #{}", index - 999, index);
-
             // println!("{}", statistics.get_statistics().unwrap())
         }
     }
+    drop(datastore);
 }
 
 fn addr_to_uuid(addr: &str) -> Uuid {
