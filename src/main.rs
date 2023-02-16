@@ -1,47 +1,56 @@
 use clap::{arg, command, Parser};
-use crossbeam::deque::{Steal, Stealer, Worker};
-use ethers::prelude::*;
-use indradb::{
-    AllEdgeQuery, AllVertexQuery, BulkInsertItem, CountQuery, CountQueryExt, Database, Datastore,
-    Edge, Identifier, MemoryDatastore, QueryOutputValue, QueryOutputValue::Count, RocksdbDatastore,
-    SpecificEdgeQuery, SpecificVertexQuery, Vertex,
-};
-use rocksdb::DB;
-use std::{
-    borrow::Borrow,
-    collections::HashMap,
-    fs::File,
-    io::{self, BufRead},
-    str::FromStr,
-    thread,
-    time::Duration,
-};
-use uuid::Uuid;
+use indradb::RocksdbDatastore;
+mod dump;
+mod load;
+mod repl;
+mod subgraph;
+mod utils;
+
 extern crate pretty_env_logger;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// CSV File Path
-    #[arg(short, long)]
-    csv: String,
-
-    /// Start line number
-    #[arg(short, long, default_value_t = 0)]
-    fail: usize,
+    #[command(subcommand)]
+    action: Action,
 
     /// Rocksdb Path
-    #[arg(short, long, default_value = "rocks")]
+    #[arg(short, long, default_value = "./rocks")]
     rocks: String,
-
-    /// Bulk insert number
-    #[arg(short, long, default_value_t = 10_000)]
-    bulk: usize,
 }
 
-type Record = HashMap<String, String>;
+#[derive(clap::Subcommand, Debug)]
+enum Action {
+    Insert {
+        /// CSV File Path
+        #[arg(short, long)]
+        csv: String,
 
-// #[tokio::main]
+        /// Start line number
+        #[arg(short, long, default_value_t = 0)]
+        fail: usize,
+
+        /// Bulk insert number
+        #[arg(short, long, default_value_t = 10_000)]
+        bulk: usize,
+    },
+    Subgraph {
+        /// contains the verteies
+        #[arg(short, long)]
+        v: Vec<String>,
+
+        /// Start line number
+        #[arg(short, long, default_value_t = 1)]
+        hop: usize,
+
+        /// output filename
+        #[arg(short, long, default_value = "subgraph.csv")]
+        output: String,
+    },
+    REPL {},
+    Dump {},
+}
+
 fn main() {
     pretty_env_logger::init_timed();
     let args = Args::parse();
@@ -63,68 +72,31 @@ fn main() {
     opts.enable_statistics();
     opts.set_disable_auto_compactions(true);
 
-    let mut datastore = RocksdbDatastore::new_db_with_options(args.rocks, opts).unwrap();
-    let v_count: usize = match datastore.get(AllVertexQuery.count().unwrap()).unwrap()[0] {
-        QueryOutputValue::Count(count) => count.try_into().unwrap(),
+    // let v_count: usize = match datastore.get(AllVertexQuery.count().unwrap()).unwrap()[0] {
+    //     QueryOutputValue::Count(count) => count.try_into().unwrap(),
+    //     _ => todo!(),
+    // };
+    // log::warn!("all node: {:?}", v_count);
+
+    match args.action {
+        Action::Insert { csv, fail, bulk } => load::bulk_insert(
+            RocksdbDatastore::new_db_with_options(args.rocks, &opts).unwrap(),
+            csv,
+            fail,
+            bulk,
+        ),
+        Action::REPL {} => {
+            repl::serve(RocksdbDatastore::new_db_with_options(args.rocks, &opts).unwrap())
+        }
+        Action::Subgraph { v, hop, output } => subgraph::gen(
+            RocksdbDatastore::new_db_with_options(args.rocks, &opts).unwrap(),
+            v,
+            hop,
+            output,
+        ),
+        Action::Dump {} => dump::json(args.rocks, &opts),
         _ => todo!(),
-    };
-    log::warn!("all node: {:?}", v_count);
-    let e_count: usize = match datastore.get(AllEdgeQuery.count().unwrap()).unwrap()[0] {
-        QueryOutputValue::Count(count) => count.try_into().unwrap(),
-        _ => todo!(),
-    };
-    log::warn!("all edge: {:?}", e_count);
-
-    let mut items = Vec::new();
-    let mut reader = csv::Reader::from_path(args.csv).unwrap();
-
-    let mut fail: usize = e_count;
-
-    if args.fail != 0 {
-        fail = args.fail
     }
 
-    let trigger = args.bulk - 1;
-    for (index, result) in reader.deserialize().enumerate() {
-        if index < fail {
-            continue;
-        }
-
-        let record: Record = result.unwrap();
-        job(record, &mut items);
-        if index % args.bulk == trigger {
-            datastore.bulk_insert(items).unwrap();
-            items = Vec::new();
-            // datastore.sync().unwrap();
-            log::warn!("pushed edge #{} -> #{}", index - 999, index);
-            // println!("{}", statistics.get_statistics().unwrap())
-        }
-    }
     // drop(datastore);
-}
-
-fn addr_to_uuid(addr: &str) -> Uuid {
-    let address = Address::from_str(addr).unwrap();
-    let id = Uuid::new_v5(&Uuid::NAMESPACE_OID, address.as_bytes());
-    return id;
-}
-
-fn job(record: Record, items: &mut Vec<BulkInsertItem>) {
-    let from = &record["from"];
-    let to = &record["to"];
-    let hash = &record["hash"];
-    // let block_num_hexstr = &record["block_number"];
-
-    let from_id = addr_to_uuid(from.as_str());
-    let v = Vertex::with_id(from_id, Identifier::new(from).unwrap());
-    items.push(indradb::BulkInsertItem::Vertex(v));
-
-    let to_id = addr_to_uuid(to.as_str());
-    let v = Vertex::with_id(to_id, Identifier::new(to).unwrap());
-    items.push(indradb::BulkInsertItem::Vertex(v));
-
-    let edge = Edge::new(from_id, Identifier::new(hash).unwrap(), to_id);
-    items.push(indradb::BulkInsertItem::Edge(edge))
-
-    // println!("pushed edge #{}", index); // 210_260_957 1_807_472_442
 }

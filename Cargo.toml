@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-indradb-lib = { git = "https://github.com/c0mm4nd/indradb", features = ["rocksdb-datastore"] }
+indradb-lib = { git = "https://github.com/c0mm4nd/indradb", rev="0f477149203b3d223e2f421e3140c036d268204a", features = ["rocksdb-datastore"] }
 tokio = "1.24.2"
 csv = "1.1"
 serde = { version = "1", features = ["derive"] }
@@ -17,6 +17,7 @@ clap = { version = "4.1.4", features = ["derive"] }
 num_cpus = "1.15.0"
 pretty_env_logger = "0.4.0"
 log = "0.4.17"
+rustpython-vm = { git = "https://github.com/RustPython/RustPython", version = "0.2.0" }
 
 [dependencies.uuid]
 version = "1.2"
