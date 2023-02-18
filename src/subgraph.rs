@@ -14,7 +14,7 @@ pub fn gen(datastore: Database<RocksdbDatastore>, v: Vec<String>, hop: usize, ou
 
     let mut output = csv::Writer::from_path(output).unwrap();
 
-    let q = SpecificVertexQuery::new(ids.clone());
+    let q = SpecificVertexQuery::new(ids);
     let result = datastore.get(q).unwrap();
     log::debug!("{:?}", result);
     for out_val in result {
@@ -35,7 +35,7 @@ fn run_hop(
     output: &mut csv::Writer<File>,
     hop: usize,
     v: Vertex,
-    parents: &Vec<Vertex>,
+    parents: &[Vertex],
 ) {
     if hop == 0 {
         return;
@@ -43,8 +43,8 @@ fn run_hop(
     log::debug!("{:?}", v);
     let mut next_hop_vertices: Vec<Vertex> = Vec::new();
 
-    let out_q = SpecificVertexQuery::single(v.id.clone())
-        .clone()
+    let out_q = SpecificVertexQuery::single(v.id)
+        
         .outbound()
         .unwrap();
     let out_e = datastore.get(out_q).unwrap();
@@ -71,9 +71,9 @@ fn run_hop(
                         log::debug!("{} result has {} tos", from, tos.len());
                         for (j, to) in tos.iter().enumerate() {
                             output
-                                .write_record(&[
-                                    from.clone(),
-                                    &to.t.as_str().to_owned(),
+                                .write_record([
+                                    from,
+                                    to.t.as_str(),
                                     &txs[j].to_string(),
                                 ])
                                 .unwrap();
@@ -87,8 +87,8 @@ fn run_hop(
         }
     }
 
-    let in_q = SpecificVertexQuery::single(v.id.clone())
-        .clone()
+    let in_q = SpecificVertexQuery::single(v.id)
+        
         .inbound()
         .unwrap();
     let in_e = datastore.get(in_q).unwrap();
@@ -118,7 +118,7 @@ fn run_hop(
                             output
                                 .write_record(&[
                                     from.t.as_str().to_owned(),
-                                    to.clone().to_owned(),
+                                    to.to_string(),
                                     txs[j].to_string(),
                                 ])
                                 .unwrap();
@@ -132,7 +132,7 @@ fn run_hop(
         }
     }
 
-    let mut next_parents = parents.clone();
+    let mut next_parents = parents.to_vec();
     next_parents.extend(next_hop_vertices.clone());
 
     for next_v in next_hop_vertices {

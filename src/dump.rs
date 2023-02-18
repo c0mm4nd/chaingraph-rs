@@ -17,7 +17,7 @@ pub fn json(path: String, opts: &Options) {
         let iter = db.iterator_cf(db.cf_handle(cf_name).unwrap(), IteratorMode::Start);
         for row in iter {
             let (k, v) = row.unwrap();
-            println!("{}: {:?} -> {:?}", cf_name, k, v);
+            println!("{cf_name}: {k:?} -> {v:?}");
         }
     }
 }

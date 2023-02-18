@@ -6,7 +6,7 @@ use uuid::Uuid;
 pub fn addr_to_uuid(addr: &str) -> Uuid {
     let address = Address::from_str(addr).unwrap();
     let id = Uuid::new_v5(&Uuid::NAMESPACE_OID, address.as_bytes()); // sha1 hash = 20bytes
-    return id;
+    id
 }
 
 // pub fn uuid_to_addr(uuid: Uuid) -> String {
