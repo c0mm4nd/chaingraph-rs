@@ -21,8 +21,9 @@ pub fn gen(datastore: Database<RocksdbDatastore>, v: Vec<String>, hop: usize, ou
     for out_val in result {
         match out_val {
             QueryOutputValue::Vertices(vertices) => {
+                let parents = vertices.clone();
                 for v in vertices {
-                    run_hop(&datastore, &mut output, hop, v)
+                    run_hop(&datastore, &mut output, hop, v, &parents)
                 }
             }
             _ => todo!(),
@@ -35,6 +36,7 @@ fn run_hop(
     output: &mut csv::Writer<File>,
     hop: usize,
     v: Vertex,
+    parents: &Vec<Vertex>,
 ) {
     if hop == 0 {
         return;
@@ -131,7 +133,12 @@ fn run_hop(
         }
     }
 
+    let mut next_parents = parents.clone();
+    next_parents.extend(next_hop_vertices.clone());
+
     for next_v in next_hop_vertices {
-        run_hop(datastore, output, hop - 1, next_v)
+        if !parents.contains(&next_v) {
+            run_hop(datastore, output, hop - 1, next_v, &next_parents)
+        }
     }
 }
