@@ -3,7 +3,6 @@ use indradb::RocksdbDatastore;
 mod dump;
 mod load;
 mod repair;
-mod repl;
 mod subgraph;
 mod utils;
 
@@ -48,7 +47,6 @@ enum Action {
         #[arg(short, long, default_value = "subgraph.csv")]
         output: String,
     },
-    REPL {},
     Dump {},
     Repair {},
 }
@@ -87,9 +85,6 @@ fn main() {
             fail,
             bulk,
         ),
-        Action::REPL {} => {
-            repl::serve(RocksdbDatastore::new_db_with_options(args.rocks, &opts).unwrap())
-        }
         Action::Subgraph { v, hop, output } => subgraph::gen(
             RocksdbDatastore::new_db_with_options(args.rocks, &opts).unwrap(),
             v,
@@ -98,7 +93,6 @@ fn main() {
         ),
         Action::Dump {} => dump::json(args.rocks, &opts),
         Action::Repair {} => repair::repair_db(args.rocks, &opts),
-        _ => todo!(),
     }
 
     // drop(datastore);

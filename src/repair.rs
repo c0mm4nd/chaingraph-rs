@@ -1,4 +1,4 @@
-use indradb::{Database, RocksdbDatastore};
+use indradb::RocksdbDatastore;
 use rocksdb::Options;
 
 pub fn repair_db(path: String, opts: &Options) {

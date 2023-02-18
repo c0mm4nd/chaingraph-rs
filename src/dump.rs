@@ -1,4 +1,3 @@
-use indradb::{Database, RocksdbDatastore};
 use rocksdb::{IteratorMode, Options, DB};
 
 const CF_NAMES: [&str; 8] = [
@@ -15,7 +14,7 @@ const CF_NAMES: [&str; 8] = [
 pub fn json(path: String, opts: &Options) {
     let db = DB::open_cf(opts, path, CF_NAMES).unwrap();
     for cf_name in CF_NAMES {
-        let mut iter = db.iterator_cf(db.cf_handle(cf_name).unwrap(), IteratorMode::Start);
+        let iter = db.iterator_cf(db.cf_handle(cf_name).unwrap(), IteratorMode::Start);
         for row in iter {
             let (k, v) = row.unwrap();
             println!("{}: {:?} -> {:?}", cf_name, k, v);

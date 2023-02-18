@@ -1,9 +1,8 @@
-use std::{fs::File, result};
+use std::fs::File;
 
 use crate::utils;
 use indradb::{
-    AllEdgeQuery, Database, Edge, IncludeQuery, QueryExt, QueryOutputValue, RocksdbDatastore,
-    SpecificEdgeQuery, SpecificVertexQuery, Vertex,
+    Database, QueryExt, QueryOutputValue, RocksdbDatastore, SpecificVertexQuery, Vertex,
 };
 use uuid::Uuid;
 
@@ -13,7 +12,7 @@ pub fn gen(datastore: Database<RocksdbDatastore>, v: Vec<String>, hop: usize, ou
     // convert v to ids
     let ids: Vec<Uuid> = v.iter().map(|addr| utils::addr_to_uuid(addr)).collect();
 
-    let mut output = csv::Writer::from_path("subgraph.csv").unwrap();
+    let mut output = csv::Writer::from_path(output).unwrap();
 
     let q = SpecificVertexQuery::new(ids.clone());
     let result = datastore.get(q).unwrap();
@@ -50,7 +49,7 @@ fn run_hop(
         .unwrap();
     let out_e = datastore.get(out_q).unwrap();
 
-    for (index, edges_list) in out_e.iter().enumerate() {
+    for edges_list in out_e {
         let from = v.t.as_str();
 
         match edges_list {
@@ -61,7 +60,7 @@ fn run_hop(
                 let mut next_v = Vec::new();
                 for e in edges {
                     assert!(e.outbound_id == v.id, "{:?} != {:?}", e, v.id);
-                    txs.push(e.t.as_str());
+                    txs.push(e.t);
                     next_v.push(e.inbound_id);
                 }
                 let result = datastore.get(SpecificVertexQuery::new(next_v)).unwrap();
@@ -75,7 +74,7 @@ fn run_hop(
                                 .write_record(&[
                                     from.clone(),
                                     &to.t.as_str().to_owned(),
-                                    &txs[j].to_owned(),
+                                    &txs[j].to_string(),
                                 ])
                                 .unwrap();
                         }
@@ -94,7 +93,7 @@ fn run_hop(
         .unwrap();
     let in_e = datastore.get(in_q).unwrap();
     log::debug!("{:?} has {} inbounds", v.id, in_e.len());
-    for (index, edges_list) in in_e.iter().enumerate() {
+    for edges_list in in_e {
         let to = v.t.as_str();
 
         match edges_list {
@@ -105,7 +104,7 @@ fn run_hop(
                 let mut next_v = Vec::new();
                 for e in edges {
                     assert!(e.inbound_id == v.id);
-                    txs.push(e.t.as_str());
+                    txs.push(e.t);
                     next_v.push(e.outbound_id);
                 }
                 let result = datastore.get(SpecificVertexQuery::new(next_v)).unwrap();
@@ -120,7 +119,7 @@ fn run_hop(
                                 .write_record(&[
                                     from.t.as_str().to_owned(),
                                     to.clone().to_owned(),
-                                    txs[j].to_owned(),
+                                    txs[j].to_string(),
                                 ])
                                 .unwrap();
                         }
