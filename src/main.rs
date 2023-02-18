@@ -2,6 +2,7 @@ use clap::{arg, command, Parser};
 use indradb::RocksdbDatastore;
 mod dump;
 mod load;
+mod repair;
 mod repl;
 mod subgraph;
 mod utils;
@@ -49,6 +50,7 @@ enum Action {
     },
     REPL {},
     Dump {},
+    Repair {},
 }
 
 fn main() {
@@ -95,6 +97,7 @@ fn main() {
             output,
         ),
         Action::Dump {} => dump::json(args.rocks, &opts),
+        Action::Repair {} => repair::repair_db(args.rocks, &opts),
         _ => todo!(),
     }
 
