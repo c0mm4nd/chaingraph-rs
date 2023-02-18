@@ -45,6 +45,10 @@ enum Action {
         #[arg(short, long)]
         input: Option<String>,
 
+        /// or privide a file which contains the verteies
+        #[arg(short, long, default_value=",")]
+        input_delim: String,
+
         /// Max hop count
         #[arg(long, default_value_t = 1)]
         hop: usize,
@@ -93,13 +97,14 @@ fn main() {
         Action::Subgraph {
             mut vertices,
             input,
+            input_delim,
             hop,
             output,
             graph_type,
         } => {
             if let Some(input) = input {
                 let content = fs::read_to_string(input).unwrap();
-                vertices.extend(content.split(',').map(|s| s.to_string()));
+                vertices.extend(content.split(&input_delim).map(|s| s.to_string()));
             }
 
             subgraph::gen_subgraph(args.rocks, &opts, vertices, hop, output, graph_type)
