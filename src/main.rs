@@ -97,15 +97,13 @@ fn main() {
             output,
             graph_type,
         } => {
-            match input {
-                Some(input) => {
-                    let content = fs::read_to_string(input).unwrap();
-                    vertices.extend(content.split(",").map(|s| s.to_string()));
-                }
-                _=>{}
+            if let Some(input) = input {
+                let content = fs::read_to_string(input).unwrap();
+                vertices.extend(content.split(',').map(|s| s.to_string()));
             }
+
             subgraph::gen_subgraph(args.rocks, &opts, vertices, hop, output, graph_type)
-        } 
+        }
         Action::Dump {} => dump::json(args.rocks, &opts),
         Action::Repair {} => repair::repair_db(args.rocks, &opts),
     }

@@ -38,7 +38,7 @@ pub fn gen_subgraph(
                 for v in vertices {
                     match graph_type {
                         GraphType::CsvAdj => run_hop(&datastore, &mut output, hop, v, &parents),
-                        _ => todo!()
+                        _ => todo!(),
                     }
                 }
             }
