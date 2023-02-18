@@ -1,5 +1,7 @@
+use std::fs;
+
 use clap::{arg, command, Parser};
-use indradb::RocksdbDatastore;
+
 mod dump;
 mod load;
 mod repair;
@@ -37,15 +39,23 @@ enum Action {
     Subgraph {
         /// contains the verteies
         #[arg(short, long)]
-        v: Vec<String>,
+        vertices: Vec<String>,
 
-        /// Start line number
-        #[arg(short, long, default_value_t = 1)]
+        /// or privide a file which contains the verteies
+        #[arg(short, long)]
+        input: Option<String>,
+
+        /// Max hop count
+        #[arg(long, default_value_t = 1)]
         hop: usize,
 
         /// output filename
         #[arg(short, long, default_value = "subgraph.csv")]
         output: String,
+
+        /// output filename
+        #[arg(value_enum, short, long, default_value_t = subgraph::GraphType::CsvAdj)]
+        graph_type: subgraph::GraphType,
     },
     Dump {},
     Repair {},
@@ -79,18 +89,23 @@ fn main() {
     // log::warn!("all node: {:?}", v_count);
 
     match args.action {
-        Action::Insert { csv, fail, bulk } => load::bulk_insert(
-            RocksdbDatastore::new_db_with_options(args.rocks, &opts).unwrap(),
-            csv,
-            fail,
-            bulk,
-        ),
-        Action::Subgraph { v, hop, output } => subgraph::gen(
-            RocksdbDatastore::new_db_with_options(args.rocks, &opts).unwrap(),
-            v,
+        Action::Insert { csv, fail, bulk } => load::bulk_insert(args.rocks, &opts, csv, fail, bulk),
+        Action::Subgraph {
+            mut vertices,
+            input,
             hop,
             output,
-        ),
+            graph_type,
+        } => {
+            match input {
+                Some(input) => {
+                    let content = fs::read_to_string(input).unwrap();
+                    vertices.extend(content.split(",").map(|s| s.to_string()));
+                }
+                _=>{}
+            }
+            subgraph::gen_subgraph(args.rocks, &opts, vertices, hop, output, graph_type)
+        } 
         Action::Dump {} => dump::json(args.rocks, &opts),
         Action::Repair {} => repair::repair_db(args.rocks, &opts),
     }

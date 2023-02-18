@@ -2,18 +2,15 @@ use std::collections::HashMap;
 
 use crate::utils;
 use indradb::{
-    AllEdgeQuery, BulkInsertItem, CountQueryExt, Database, Edge, Identifier, QueryOutputValue,
+    AllEdgeQuery, BulkInsertItem, CountQueryExt, Edge, Identifier, QueryOutputValue,
     RocksdbDatastore, Vertex,
 };
+use rocksdb::Options;
 
 type Record = HashMap<String, String>;
 
-pub fn bulk_insert(
-    datastore: Database<RocksdbDatastore>,
-    csv: String,
-    mut fail: usize,
-    bulk: usize,
-) {
+pub fn bulk_insert(path: String, opts: &Options, csv: String, mut fail: usize, bulk: usize) {
+    let datastore = RocksdbDatastore::new_db_with_options(path, opts).unwrap();
     log::warn!("start bulk insert");
 
     let e_count: usize = match datastore.get(AllEdgeQuery.count().unwrap()).unwrap()[0] {
