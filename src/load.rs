@@ -9,7 +9,11 @@ use rocksdb::Options;
 
 type Record = HashMap<String, String>;
 
-pub fn bulk_insert(path: String, opts: &Options, csv: String, mut fail: usize, bulk: usize) {
+pub fn bulk_insert(path: String, opts: &mut Options, csv: String, mut fail: usize, bulk: usize) {
+    opts.set_disable_auto_compactions(true);
+    opts.set_write_buffer_size(0x80000000); // 64mb
+    opts.prepare_for_bulk_load();
+
     let datastore = RocksdbDatastore::new_db_with_options(path, opts).unwrap();
     log::warn!("start bulk insert");
 

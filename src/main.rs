@@ -45,10 +45,6 @@ enum Action {
         #[arg(short, long)]
         input: Option<String>,
 
-        /// or privide a file which contains the verteies
-        #[arg(short, long, default_value=",")]
-        input_delim: String,
-
         /// Max hop count
         #[arg(long, default_value_t = 1)]
         hop: usize,
@@ -73,7 +69,7 @@ fn main() {
     opts.create_if_missing(true);
     opts.increase_parallelism(num_cpus::get().try_into().unwrap());
     opts.set_compaction_style(rocksdb::DBCompactionStyle::Level);
-    opts.set_write_buffer_size(0x80000000); // 64mb
+
     opts.set_max_write_buffer_number(3);
     opts.set_target_file_size_base(67_108_864); // 64mb
     opts.set_level_zero_file_num_compaction_trigger(8);
@@ -83,8 +79,8 @@ fn main() {
     opts.set_num_levels(4);
     opts.set_max_bytes_for_level_base(536_870_912); // 512mb
     opts.set_max_bytes_for_level_multiplier(8.0);
+    opts.set_enable_blob_files(true);
     opts.enable_statistics();
-    opts.set_disable_auto_compactions(true);
 
     // let v_count: usize = match datastore.get(AllVertexQuery.count().unwrap()).unwrap()[0] {
     //     QueryOutputValue::Count(count) => count.try_into().unwrap(),
@@ -93,21 +89,20 @@ fn main() {
     // log::warn!("all node: {:?}", v_count);
 
     match args.action {
-        Action::Insert { csv, fail, bulk } => load::bulk_insert(args.rocks, &opts, csv, fail, bulk),
+        Action::Insert { csv, fail, bulk } => load::bulk_insert(args.rocks, &mut opts, csv, fail, bulk),
         Action::Subgraph {
             mut vertices,
             input,
-            input_delim,
             hop,
             output,
             graph_type,
         } => {
             if let Some(input) = input {
                 let content = fs::read_to_string(input).unwrap();
-                vertices.extend(content.split(&input_delim).map(|s| s.to_string()));
+                vertices.extend(content.split_whitespace().map(|s| s.to_string()));
             }
 
-            subgraph::gen_subgraph(args.rocks, &opts, vertices, hop, output, graph_type)
+            subgraph::gen_subgraph(args.rocks, &mut opts, &mut vertices, hop, output, graph_type)
         }
         Action::Dump {} => dump::json(args.rocks, &opts),
         Action::Repair {} => repair::repair_db(args.rocks, &opts),

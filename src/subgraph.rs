@@ -1,6 +1,7 @@
 use std::fs::File;
 
 use crate::utils;
+use hashbrown::HashSet;
 use indradb::{
     Database, QueryExt, QueryOutputValue, RocksdbDatastore, SpecificVertexQuery, Vertex,
 };
@@ -16,33 +17,42 @@ pub enum GraphType {
 
 pub fn gen_subgraph(
     path: String,
-    opts: &Options,
-    v: Vec<String>,
+    opts: &mut Options,
+    v: &mut Vec<String>,
     hop: usize,
     output: String,
     graph_type: GraphType,
 ) {
+    opts.optimize_for_point_lookup(0x100000000);
+    opts.set_optimize_filters_for_hits(true);
+    opts.optimize_level_style_compaction(0x100000000);
+    opts.set_memtable_whole_key_filtering(true);
+    
     let datastore = RocksdbDatastore::new_db_with_options(path, opts).unwrap();
     // convert v to ids
+    v.sort();
+    v.dedup();
     let ids: Vec<Uuid> = v.iter().map(|addr| utils::addr_to_uuid(addr)).collect();
+    log::debug!("{} addresses", ids.len());
 
     let mut output = csv::Writer::from_path(output).unwrap();
 
     let q = SpecificVertexQuery::new(ids);
     let result = datastore.get(q).unwrap();
-    log::debug!("{:?}", result);
+
     for out_val in result {
-        match out_val {
-            QueryOutputValue::Vertices(vertices) => {
-                let parents = vertices.clone();
-                for v in vertices {
-                    match graph_type {
-                        GraphType::CsvAdj => run_hop(&datastore, &mut output, hop, v, &parents),
-                        _ => todo!(),
-                    }
+        if let QueryOutputValue::Vertices(vertices) = out_val {
+            let mut crawled = HashSet::new();
+            for v in vertices.clone() {
+                crawled.insert(v);
+            }
+
+            for v in &crawled.clone() {
+                match graph_type {
+                    GraphType::CsvAdj => run_hop(&datastore, &mut output, hop, v, &mut crawled),
+                    _ => todo!(),
                 }
             }
-            _ => todo!(),
         }
     }
 }
@@ -51,8 +61,8 @@ fn run_hop(
     datastore: &Database<RocksdbDatastore>,
     output: &mut csv::Writer<File>,
     hop: usize,
-    v: Vertex,
-    parents: &[Vertex],
+    v: &Vertex,
+    crawled: &mut HashSet<Vertex>,
 ) {
     if hop == 0 {
         return;
@@ -66,34 +76,28 @@ fn run_hop(
     for edges_list in out_e {
         let from = v.t.as_str();
 
-        match edges_list {
-            QueryOutputValue::Edges(edges) => {
-                log::debug!("{} has {} outbound edges", from, edges.len());
+        if let QueryOutputValue::Edges(edges) = edges_list {
+            log::debug!("hop {}:  {} has {} outbound edges", hop, from, edges.len());
 
-                let mut txs = Vec::new();
-                let mut next_v = Vec::new();
-                for e in edges {
-                    assert!(e.outbound_id == v.id, "{:?} != {:?}", e, v.id);
-                    txs.push(e.t);
-                    next_v.push(e.inbound_id);
-                }
-                let result = datastore.get(SpecificVertexQuery::new(next_v)).unwrap();
-                let result = &result[0]; // must be 1 len
-
-                match result {
-                    QueryOutputValue::Vertices(tos) => {
-                        log::debug!("{} result has {} tos", from, tos.len());
-                        for (j, to) in tos.iter().enumerate() {
-                            output
-                                .write_record([from, to.t.as_str(), &txs[j].to_string()])
-                                .unwrap();
-                        }
-                        next_hop_vertices.extend(tos.clone());
-                    }
-                    _ => panic!(),
-                }
+            let mut txs = Vec::new();
+            let mut next_v = Vec::new();
+            for e in edges {
+                assert!(e.outbound_id == v.id, "{:?} != {:?}", e, v.id);
+                txs.push(e.t);
+                next_v.push(e.inbound_id);
             }
-            _ => panic!(),
+            let result = datastore.get(SpecificVertexQuery::new(next_v)).unwrap();
+            let result = &result[0]; // must be 1 len
+
+            if let QueryOutputValue::Vertices(tos) = result {
+                log::debug!("{} result has {} tos", from, tos.len());
+                for (j, to) in tos.iter().enumerate() {
+                    output
+                        .write_record([from, to.t.as_str(), &txs[j].to_string()])
+                        .unwrap();
+                }
+                next_hop_vertices.extend(tos.clone());
+            }
         }
     }
 
@@ -103,48 +107,40 @@ fn run_hop(
     for edges_list in in_e {
         let to = v.t.as_str();
 
-        match edges_list {
-            QueryOutputValue::Edges(edges) => {
-                log::debug!("{} has {} inbound edges", to, edges.len());
+        if let QueryOutputValue::Edges(edges) = edges_list {
+            log::debug!("{} has {} inbound edges", to, edges.len());
 
-                let mut txs = Vec::new();
-                let mut next_v = Vec::new();
-                for e in edges {
-                    assert!(e.inbound_id == v.id);
-                    txs.push(e.t);
-                    next_v.push(e.outbound_id);
-                }
-                let result = datastore.get(SpecificVertexQuery::new(next_v)).unwrap();
-                log::debug!("{} has {} results", to, result.len());
-                let result = &result[0];
-
-                match result {
-                    QueryOutputValue::Vertices(froms) => {
-                        log::debug!("{} result has {} froms", to, froms.len());
-                        for (j, from) in froms.iter().enumerate() {
-                            output
-                                .write_record(&[
-                                    from.t.as_str().to_owned(),
-                                    to.to_string(),
-                                    txs[j].to_string(),
-                                ])
-                                .unwrap();
-                        }
-                        next_hop_vertices.extend(froms.clone());
-                    }
-                    _ => panic!(),
-                }
+            let mut txs = Vec::new();
+            let mut next_v = Vec::new();
+            for e in edges {
+                assert!(e.inbound_id == v.id);
+                txs.push(e.t);
+                next_v.push(e.outbound_id);
             }
-            _ => panic!(),
+            let result = datastore.get(SpecificVertexQuery::new(next_v)).unwrap();
+            log::debug!("{} has {} results", to, result.len());
+            let result = &result[0];
+
+            if let QueryOutputValue::Vertices(froms) = result {
+                log::debug!("{} result has {} froms", to, froms.len());
+                for (j, from) in froms.iter().enumerate() {
+                    output
+                        .write_record(&[
+                            from.t.as_str().to_owned(),
+                            to.to_string(),
+                            txs[j].to_string(),
+                        ])
+                        .unwrap();
+                }
+                next_hop_vertices.extend(froms.clone());
+            }
         }
     }
 
-    let mut next_parents = parents.to_vec();
-    next_parents.extend(next_hop_vertices.clone());
-
     for next_v in next_hop_vertices {
-        if !parents.contains(&next_v) {
-            run_hop(datastore, output, hop - 1, next_v, &next_parents)
+        if !crawled.contains(&next_v) {
+            crawled.insert(next_v.clone());
+            run_hop(datastore, output, hop - 1, &next_v, crawled);
         }
     }
 }
