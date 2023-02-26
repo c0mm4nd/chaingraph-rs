@@ -107,29 +107,22 @@ fn run_hop(
         if let QueryOutputValue::Edges(edges) = edges_list {
             log::debug!("{} has {} inbound edges", to, edges.len());
 
-            let mut txs = Vec::new();
-            let mut next_v = Vec::new();
             for e in edges {
                 assert!(e.inbound_id == v.id);
-                txs.push(e.t);
-                next_v.push(e.outbound_id);
-            }
-            let result = datastore.get(SpecificVertexQuery::new(next_v)).unwrap();
-            log::debug!("{} has {} results", to, result.len());
-            let result = &result[0];
 
-            if let QueryOutputValue::Vertices(froms) = result {
-                log::debug!("{} result has {} froms", to, froms.len());
-                for (j, from) in froms.iter().enumerate() {
-                    output
-                        .write_record(&[
-                            from.t.as_str().to_owned(),
-                            to.to_string(),
-                            txs[j].to_string(),
-                        ])
-                        .unwrap();
+                let result = datastore
+                    .get(SpecificVertexQuery::single(e.outbound_id))
+                    .unwrap();
+                log::debug!("{} has {} results", to, result.len());
+                let result = &result[0];
+
+                if let QueryOutputValue::Vertices(froms) = result {
+                    log::debug!("{} result has {} froms", to, froms.len());
+                    for from in froms {
+                        output.write_record([from.t.as_str(), to, &e.t]).unwrap();
+                    }
+                    next_hop_vertices.extend(froms.clone());
                 }
-                next_hop_vertices.extend(froms.clone());
             }
         }
     }

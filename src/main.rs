@@ -89,7 +89,9 @@ fn main() {
     // log::warn!("all node: {:?}", v_count);
 
     match args.action {
-        Action::Insert { csv, fail, bulk } => load::bulk_insert(args.rocks, &mut opts, csv, fail, bulk),
+        Action::Insert { csv, fail, bulk } => {
+            load::bulk_insert(args.rocks, &mut opts, csv, fail, bulk)
+        }
         Action::Subgraph {
             mut vertices,
             input,
@@ -102,7 +104,14 @@ fn main() {
                 vertices.extend(content.split_whitespace().map(|s| s.to_string()));
             }
 
-            subgraph::gen_subgraph(args.rocks, &mut opts, &mut vertices, hop, output, graph_type)
+            subgraph::gen_subgraph(
+                args.rocks,
+                &mut opts,
+                &mut vertices,
+                hop,
+                output,
+                graph_type,
+            )
         }
         Action::Dump {} => dump::json(args.rocks, &opts),
         Action::Repair {} => repair::repair_db(args.rocks, &opts),
