@@ -88,10 +88,8 @@ fn run_hop(
                 let result = &result[0]; // must be 1 len
 
                 if let QueryOutputValue::Vertices(tos) = result {
-                    log::debug!("{} result has {} tos", from, tos.len());
-                    for to in tos {
-                        output.write_record([from, to.t.as_str(), &e.t]).unwrap();
-                    }
+                    let to = &tos[0];
+                    output.write_record([from, to.t.as_str(), &e.t]).unwrap();
                     next_hop_vertices.extend(tos.clone());
                 }
             }
@@ -113,14 +111,11 @@ fn run_hop(
                 let result = datastore
                     .get(SpecificVertexQuery::single(e.outbound_id))
                     .unwrap();
-                log::debug!("{} has {} results", to, result.len());
                 let result = &result[0];
 
                 if let QueryOutputValue::Vertices(froms) = result {
-                    log::debug!("{} result has {} froms", to, froms.len());
-                    for from in froms {
-                        output.write_record([from.t.as_str(), to, &e.t]).unwrap();
-                    }
+                    let from = &froms[0]; // must only one
+                    output.write_record([from.t.as_str(), to, &e.t]).unwrap();
                     next_hop_vertices.extend(froms.clone());
                 }
             }
