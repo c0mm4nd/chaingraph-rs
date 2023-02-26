@@ -27,7 +27,7 @@ pub fn gen_subgraph(
     opts.set_optimize_filters_for_hits(true);
     opts.optimize_level_style_compaction(0x100000000);
     opts.set_memtable_whole_key_filtering(true);
-    
+
     let datastore = RocksdbDatastore::new_db_with_options(path, opts).unwrap();
     // convert v to ids
     v.sort();
@@ -79,24 +79,21 @@ fn run_hop(
         if let QueryOutputValue::Edges(edges) = edges_list {
             log::debug!("hop {}:  {} has {} outbound edges", hop, from, edges.len());
 
-            let mut txs = Vec::new();
-            let mut next_v = Vec::new();
             for e in edges {
                 assert!(e.outbound_id == v.id, "{:?} != {:?}", e, v.id);
-                txs.push(e.t);
-                next_v.push(e.inbound_id);
-            }
-            let result = datastore.get(SpecificVertexQuery::new(next_v)).unwrap();
-            let result = &result[0]; // must be 1 len
 
-            if let QueryOutputValue::Vertices(tos) = result {
-                log::debug!("{} result has {} tos", from, tos.len());
-                for (j, to) in tos.iter().enumerate() {
-                    output
-                        .write_record([from, to.t.as_str(), &txs[j].to_string()])
-                        .unwrap();
+                let result = datastore
+                    .get(SpecificVertexQuery::single(e.inbound_id))
+                    .unwrap();
+                let result = &result[0]; // must be 1 len
+
+                if let QueryOutputValue::Vertices(tos) = result {
+                    log::debug!("{} result has {} tos", from, tos.len());
+                    for to in tos {
+                        output.write_record([from, to.t.as_str(), &e.t]).unwrap();
+                    }
+                    next_hop_vertices.extend(tos.clone());
                 }
-                next_hop_vertices.extend(tos.clone());
             }
         }
     }
