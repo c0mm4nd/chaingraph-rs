@@ -3,7 +3,8 @@ use std::fs::File;
 use crate::utils;
 use hashbrown::HashSet;
 use indradb::{
-    Database, QueryExt, QueryOutputValue, RocksdbDatastore, SpecificVertexQuery, Vertex,
+    Database, Edge, Identifier, QueryExt, QueryOutputValue, RocksdbDatastore, SpecificEdgeQuery,
+    SpecificVertexQuery, Vertex,
 };
 use rocksdb::Options;
 use uuid::Uuid;
@@ -42,14 +43,13 @@ pub fn gen_subgraph(
 
     for out_val in result {
         if let QueryOutputValue::Vertices(vertices) = out_val {
-            let mut crawled = HashSet::new();
-            for v in vertices.clone() {
-                crawled.insert(v);
-            }
+            let mut crawled_edges: HashSet<Identifier> = HashSet::new();
 
-            for v in &crawled.clone() {
+            for v in &vertices {
                 match graph_type {
-                    GraphType::CsvAdj => run_hop(&datastore, &mut output, hop, v, &mut crawled),
+                    GraphType::CsvAdj => {
+                        run_hop(&datastore, &mut output, hop, v, &mut crawled_edges)
+                    }
                     _ => todo!(),
                 }
             }
@@ -62,7 +62,7 @@ fn run_hop(
     output: &mut csv::Writer<File>,
     hop: usize,
     v: &Vertex,
-    crawled: &mut HashSet<Vertex>,
+    crawled_edges: &mut HashSet<Identifier>,
 ) {
     if hop == 0 {
         return;
@@ -82,6 +82,11 @@ fn run_hop(
             for e in edges {
                 assert!(e.outbound_id == v.id, "{:?} != {:?}", e, v.id);
 
+                if crawled_edges.contains(&e.t) {
+                    continue;
+                }
+                crawled_edges.insert(e.t);
+
                 let result = datastore
                     .get(SpecificVertexQuery::single(e.inbound_id))
                     .unwrap();
@@ -90,7 +95,7 @@ fn run_hop(
                 if let QueryOutputValue::Vertices(tos) = result {
                     let to = &tos[0];
                     output.write_record([from, to.t.as_str(), &e.t]).unwrap();
-                    next_hop_vertices.extend(tos.clone());
+                    next_hop_vertices.push(to.to_owned());
                 }
             }
         }
@@ -98,15 +103,20 @@ fn run_hop(
 
     let in_q = SpecificVertexQuery::single(v.id).inbound().unwrap();
     let in_e = datastore.get(in_q).unwrap();
-    log::debug!("{:?} has {} inbounds", v.id, in_e.len());
+
     for edges_list in in_e {
         let to = v.t.as_str();
 
         if let QueryOutputValue::Edges(edges) = edges_list {
-            log::debug!("{} has {} inbound edges", to, edges.len());
+            log::debug!("hop {}:  {} has {} inbound edges", hop, to, edges.len());
 
             for e in edges {
                 assert!(e.inbound_id == v.id);
+
+                if crawled_edges.contains(&e.t) {
+                    continue;
+                }
+                crawled_edges.insert(e.t);
 
                 let result = datastore
                     .get(SpecificVertexQuery::single(e.outbound_id))
@@ -116,16 +126,13 @@ fn run_hop(
                 if let QueryOutputValue::Vertices(froms) = result {
                     let from = &froms[0]; // must only one
                     output.write_record([from.t.as_str(), to, &e.t]).unwrap();
-                    next_hop_vertices.extend(froms.clone());
+                    next_hop_vertices.push(from.to_owned());
                 }
             }
         }
     }
 
     for next_v in next_hop_vertices {
-        if !crawled.contains(&next_v) {
-            crawled.insert(next_v.clone());
-            run_hop(datastore, output, hop - 1, &next_v, crawled);
-        }
+        run_hop(datastore, output, hop - 1, &next_v, crawled_edges);
     }
 }
