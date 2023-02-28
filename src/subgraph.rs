@@ -44,11 +44,12 @@ pub fn gen_subgraph(
     for out_val in result {
         if let QueryOutputValue::Vertices(vertices) = out_val {
             let mut crawled_edges: HashSet<Identifier> = HashSet::new();
+            let mut crawled_vertices: HashSet<Identifier> = HashSet::new();
 
             for v in &vertices {
                 match graph_type {
                     GraphType::CsvAdj => {
-                        run_hop(&datastore, &mut output, hop, v, &mut crawled_edges)
+                        run_hop(&datastore, &mut output, hop, v, &mut crawled_edges, &mut crawled_vertices)
                     }
                     _ => todo!(),
                 }
@@ -63,6 +64,7 @@ fn run_hop(
     hop: usize,
     v: &Vertex,
     crawled_edges: &mut HashSet<Identifier>,
+    crawled_vertices: &mut HashSet<Identifier>,
 ) {
     if hop == 0 {
         return;
@@ -133,6 +135,10 @@ fn run_hop(
     }
 
     for next_v in next_hop_vertices {
-        run_hop(datastore, output, hop - 1, &next_v, crawled_edges);
+        if crawled_vertices.contains(&next_v.t) {
+            continue;
+        }
+        crawled_vertices.insert(next_v.t);
+        run_hop(datastore, output, hop - 1, &next_v, crawled_edges, crawled_vertices);
     }
 }
