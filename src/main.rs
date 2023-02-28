@@ -3,6 +3,7 @@ use std::fs;
 use clap::{arg, command, Parser};
 
 mod dump;
+mod feature;
 mod load;
 mod repair;
 mod subgraph;
@@ -59,7 +60,25 @@ enum Action {
     },
     Dump {},
     Repair {},
+    Feature {
+        /// contains the verteies
+        #[arg(short, long)]
+        vertices: Vec<String>,
+
+        /// or privide a file which contains the verteies
+        #[arg(short, long)]
+        input: Option<String>,
+
+        /// Max hop count
+        #[arg(long, default_value_t = 1)]
+        hop: usize,
+
+        /// output filename
+        #[arg(short, long, default_value = "subgraph.csv")]
+        output: String,
+    },
 }
+
 
 fn main() {
     pretty_env_logger::init_timed();
@@ -115,6 +134,32 @@ fn main() {
         }
         Action::Dump {} => dump::json(args.rocks, &opts),
         Action::Repair {} => repair::repair_db(args.rocks, &opts),
+        Action::Feature {
+            mut vertices,
+            input,
+            hop,
+            output,
+        } => {
+            if let Some(input) = input {
+                let content = fs::read_to_string(input).unwrap();
+                vertices.extend(content.split_whitespace().map(|s| s.to_string()));
+            }
+
+            tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let mut fe = feature::FeatureExtracter::new(args.rocks, &mut opts);
+                fe.gen_subgraph_features(
+                    &mut vertices,
+                    hop,
+                    output,
+                ).await
+            })
+
+
+        }
     }
 
     // drop(datastore);
