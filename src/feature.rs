@@ -1,6 +1,7 @@
 use std::{fs::File, str::FromStr};
 
 use crate::utils;
+use async_recursion::async_recursion;
 use bigdecimal::{BigDecimal, Zero, ToPrimitive};
 use ethers::{prelude::*, providers::Provider, utils::WEI_IN_ETHER};
 use hashbrown::HashSet;
@@ -201,6 +202,7 @@ impl FeatureExtracter {
         }
     }
 
+    #[async_recursion]
     async fn run_hop(
         &mut self,
         provider: &Provider<Ws>,
@@ -325,7 +327,7 @@ impl FeatureExtracter {
                 &next_v,
                 crawled_edges,
                 crawled_vertices,
-            );
+            ).await;
         }
     }
 }
