@@ -79,7 +79,6 @@ enum Action {
     },
 }
 
-
 fn main() {
     pretty_env_logger::init_timed();
     let args = Args::parse();
@@ -146,19 +145,13 @@ fn main() {
             }
 
             tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                let mut fe = feature::FeatureExtracter::new(args.rocks, &mut opts);
-                fe.gen_subgraph_features(
-                    &mut vertices,
-                    hop,
-                    output,
-                ).await
-            })
-
-
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let mut fe = feature::FeatureExtracter::new(args.rocks, &mut opts, output);
+                    fe.gen_subgraph_features(&mut vertices, hop).await
+                })
         }
     }
 
