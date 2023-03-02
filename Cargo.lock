@@ -490,6 +490,7 @@ dependencies = [
  "crossbeam",
  "csv",
  "ethers",
+ "futures",
  "hashbrown 0.13.2",
  "indradb-lib",
  "log",

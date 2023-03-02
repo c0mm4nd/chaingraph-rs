@@ -3,8 +3,7 @@ use std::fs::File;
 use crate::utils;
 use hashbrown::HashSet;
 use indradb::{
-    Database, Edge, Identifier, QueryExt, QueryOutputValue, RocksdbDatastore, SpecificEdgeQuery,
-    SpecificVertexQuery, Vertex,
+    Database, Identifier, QueryExt, QueryOutputValue, RocksdbDatastore, SpecificVertexQuery, Vertex,
 };
 use rocksdb::Options;
 use uuid::Uuid;
@@ -48,9 +47,14 @@ pub fn gen_subgraph(
 
             for v in &vertices {
                 match graph_type {
-                    GraphType::CsvAdj => {
-                        run_hop(&datastore, &mut output, hop, v, &mut crawled_edges, &mut crawled_vertices)
-                    }
+                    GraphType::CsvAdj => run_hop(
+                        &datastore,
+                        &mut output,
+                        hop,
+                        v,
+                        &mut crawled_edges,
+                        &mut crawled_vertices,
+                    ),
                     _ => todo!(),
                 }
             }
@@ -139,6 +143,13 @@ fn run_hop(
             continue;
         }
         crawled_vertices.insert(next_v.t);
-        run_hop(datastore, output, hop - 1, &next_v, crawled_edges, crawled_vertices);
+        run_hop(
+            datastore,
+            output,
+            hop - 1,
+            &next_v,
+            crawled_edges,
+            crawled_vertices,
+        );
     }
 }

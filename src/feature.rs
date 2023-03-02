@@ -10,7 +10,7 @@ use bigdecimal::{BigDecimal, ToPrimitive, Zero};
 use ethers::{prelude::*, providers::Provider, utils::WEI_IN_ETHER};
 use hashbrown::HashSet;
 use indradb::{
-    Database, Edge, Identifier, QueryExt, QueryOutputValue, RocksdbDatastore, SpecificEdgeQuery,
+    Database, Identifier, QueryExt, QueryOutputValue, RocksdbDatastore, SpecificEdgeQuery,
     SpecificVertexQuery, Vertex,
 };
 use rocksdb::Options;
@@ -74,12 +74,12 @@ impl AddressFeature {
         let avg_val_in = if count_in.is_zero() {
             0.
         } else {
-            sum_val_in as f64 / count_in
+            sum_val_in / count_in
         };
         let avg_val_out = if count_out.is_zero() {
             0.
         } else {
-            sum_val_out as f64 / count_out
+            sum_val_out / count_out
         };
 
         let max_height_in = height_in_list.iter().max();
@@ -131,31 +131,31 @@ impl AddressFeature {
         let sum_gas_in: f64 = gas_in_list.iter().sum();
         let sum_gas_out: f64 = gas_out_list.iter().sum();
 
-        let avg_gas = (sum_gas_in + sum_gas_out) as f64 / (count_in + count_out);
+        let avg_gas = (sum_gas_in + sum_gas_out) / (count_in + count_out);
         let avg_gas_in = if count_in.is_zero() {
             f64::NAN
         } else {
-            sum_gas_in as f64 / count_in
+            sum_gas_in / count_in
         };
         let avg_gas_out = if count_out.is_zero() {
             f64::NAN
         } else {
-            sum_gas_out as f64 / count_out
+            sum_gas_out / count_out
         };
 
         let sum_gasprice_in: f64 = gasprice_in_list.iter().sum();
         let sum_gasprice_out: f64 = gasprice_out_list.iter().sum();
 
-        let avg_gasprice = (sum_gasprice_in + sum_gasprice_out) as f64 / (count_in + count_out);
+        let avg_gasprice = (sum_gasprice_in + sum_gasprice_out) / (count_in + count_out);
         let avg_gasprice_in = if count_in.is_zero() {
             f64::NAN
         } else {
-            sum_gasprice_in as f64 / count_in
+            sum_gasprice_in / count_in
         };
         let avg_gasprice_out = if count_out.is_zero() {
             f64::NAN
         } else {
-            sum_gasprice_out as f64 / count_out
+            sum_gasprice_out / count_out
         };
 
         let in_out_rate = if count_out.is_zero() {
@@ -414,6 +414,7 @@ impl FeatureExtracter {
         // write feature end
 
         // start next hop
+        let mut handles = Vec::new();
         for next_v in next_hop_vertices {
             if self.crawled_vertices.lock().unwrap().contains(&next_v.t) {
                 continue;
@@ -423,9 +424,12 @@ impl FeatureExtracter {
             let mut fe_clone = self.clone();
             let provider = provider.clone();
 
-            tokio::spawn(async move {
+            let task = tokio::spawn(async move {
                 fe_clone.run_hop(provider, hop - 1, &next_v).await;
             });
+            handles.push(task);
         }
+
+        futures::future::join_all(handles).await;
     }
 }
