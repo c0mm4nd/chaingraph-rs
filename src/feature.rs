@@ -442,6 +442,8 @@ impl FeatureExtracter {
             handles.push(task);
         }
 
-        futures::future::join_all(handles).await;
+        for task in handles {
+            task.await.unwrap();
+        }
     }
 }
