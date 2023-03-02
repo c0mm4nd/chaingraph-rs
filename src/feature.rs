@@ -209,10 +209,17 @@ pub struct FeatureExtracter {
     crawled_edges: Arc<Mutex<HashSet<Identifier>>>,
     g_output: Arc<Mutex<csv::Writer<File>>>,
     f_output: Arc<Mutex<csv::Writer<File>>>,
+    max_sample: usize,
 }
 
 impl FeatureExtracter {
-    pub fn new(path: String, opts: &mut Options, output: String) -> Self {
+    pub fn new(
+        path: String,
+        opts: &mut Options,
+        g_output: String,
+        f_output: String,
+        max_tx: usize,
+    ) -> Self {
         opts.optimize_for_point_lookup(0x100000000);
         opts.set_optimize_filters_for_hits(true);
         opts.optimize_level_style_compaction(0x100000000);
@@ -220,8 +227,8 @@ impl FeatureExtracter {
 
         let db = RocksdbDatastore::new_db_with_options(path, opts).unwrap();
 
-        let mut g_output = csv::Writer::from_path(output).unwrap();
-        let mut f_output = csv::Writer::from_path("./features.out").unwrap();
+        let mut g_output = csv::Writer::from_path(g_output).unwrap();
+        let mut f_output = csv::Writer::from_path(f_output).unwrap();
 
         let mut crawled_edges: HashSet<Identifier> = HashSet::new();
         let mut crawled_vertices: HashSet<Identifier> = HashSet::new();
@@ -236,6 +243,7 @@ impl FeatureExtracter {
 
             g_output: Arc::new(Mutex::new(g_output)),
             f_output: Arc::new(Mutex::new(f_output)),
+            max_sample: max_tx,
         }
     }
 
@@ -272,14 +280,14 @@ impl FeatureExtracter {
         let out_e = self.db.get(out_q).unwrap();
 
         // init all lists
-        let mut val_in_list = Vec::new();
-        let mut val_out_list = Vec::new();
-        let mut height_in_list = Vec::new();
-        let mut height_out_list = Vec::new();
-        let mut gas_in_list = Vec::new();
-        let mut gas_out_list = Vec::new();
-        let mut gasprice_in_list = Vec::new();
-        let mut gasprice_out_list = Vec::new();
+        let mut val_in_list = Vec::with_capacity(self.max_sample);
+        let mut val_out_list = Vec::with_capacity(self.max_sample);
+        let mut height_in_list = Vec::with_capacity(self.max_sample);
+        let mut height_out_list = Vec::with_capacity(self.max_sample);
+        let mut gas_in_list = Vec::with_capacity(self.max_sample);
+        let mut gas_out_list = Vec::with_capacity(self.max_sample);
+        let mut gasprice_in_list = Vec::with_capacity(self.max_sample);
+        let mut gasprice_out_list = Vec::with_capacity(self.max_sample);
 
         for edges_list in out_e {
             let from = v.t.as_str();
@@ -287,36 +295,38 @@ impl FeatureExtracter {
             if let QueryOutputValue::Edges(edges) = edges_list {
                 log::debug!("hop {}:  {} has {} outbound edges", hop, from, edges.len());
 
-                for e in edges {
+                for (i, e) in edges.iter().enumerate() {
                     assert!(e.outbound_id == v.id, "{:?} != {:?}", e, v.id);
 
-                    let tx_hash = H256::from_str(e.t.as_str()).unwrap();
-                    let tx = provider.get_transaction(tx_hash).await.unwrap().unwrap();
-                    val_out_list.push(
-                        (utils::u256_to_bigdecimal(tx.value) / &self.wei_in_eth)
-                            .to_f64()
-                            .unwrap(),
-                    );
-                    height_out_list.push(tx.block_number.unwrap().as_u64());
-                    gas_out_list.push(utils::u256_to_bigdecimal(tx.gas).to_f64().unwrap());
-                    gasprice_out_list.push(
-                        utils::u256_to_bigdecimal(tx.gas_price.unwrap_or(U256::from(0)))
-                            .to_f64()
-                            .unwrap(),
-                    );
-
-                    if self.crawled_edges.lock().unwrap().contains(&e.t) {
-                        continue;
+                    if i < self.max_sample {
+                        let tx_hash = H256::from_str(e.t.as_str()).unwrap();
+                        let tx = provider.get_transaction(tx_hash).await.unwrap().unwrap();
+                        val_out_list.push(
+                            (utils::u256_to_bigdecimal(tx.value) / &self.wei_in_eth)
+                                .to_f64()
+                                .unwrap(),
+                        );
+                        height_out_list.push(tx.block_number.unwrap().as_u64());
+                        gas_out_list.push(utils::u256_to_bigdecimal(tx.gas).to_f64().unwrap());
+                        gasprice_out_list.push(
+                            utils::u256_to_bigdecimal(tx.gas_price.unwrap_or(U256::from(0)))
+                                .to_f64()
+                                .unwrap(),
+                        );
                     }
-                    self.crawled_edges.lock().unwrap().insert(e.t);
-
-                    let result = self
-                        .db
-                        .get(SpecificVertexQuery::single(e.inbound_id))
-                        .unwrap();
-                    let result = &result[0]; // must be 1 len
 
                     if hop != 0 {
+                        if self.crawled_edges.lock().unwrap().contains(&e.t) {
+                            continue;
+                        }
+                        self.crawled_edges.lock().unwrap().insert(e.t);
+
+                        let result = self
+                            .db
+                            .get(SpecificVertexQuery::single(e.inbound_id))
+                            .unwrap();
+                        let result = &result[0]; // must be 1 len
+
                         if let QueryOutputValue::Vertices(tos) = result {
                             let to = &tos[0];
                             self.g_output
@@ -340,36 +350,38 @@ impl FeatureExtracter {
             if let QueryOutputValue::Edges(edges) = edges_list {
                 log::debug!("hop {}:  {} has {} inbound edges", hop, to, edges.len());
 
-                for e in edges {
+                for (i, e) in edges.iter().enumerate() {
                     assert!(e.inbound_id == v.id);
 
-                    let tx_hash = H256::from_str(e.t.as_str()).unwrap();
-                    let tx = provider.get_transaction(tx_hash).await.unwrap().unwrap();
-                    val_in_list.push(
-                        (utils::u256_to_bigdecimal(tx.value) / &self.wei_in_eth)
-                            .to_f64()
-                            .unwrap(),
-                    );
-                    height_in_list.push(tx.block_number.unwrap().as_u64());
-                    gas_in_list.push(utils::u256_to_bigdecimal(tx.gas).to_f64().unwrap());
-                    gasprice_in_list.push(
-                        utils::u256_to_bigdecimal(tx.gas_price.unwrap_or(U256::from(0)))
-                            .to_f64()
-                            .unwrap(),
-                    );
-
-                    if self.crawled_edges.lock().unwrap().contains(&e.t) {
-                        continue;
+                    if i < self.max_sample {
+                        let tx_hash = H256::from_str(e.t.as_str()).unwrap();
+                        let tx = provider.get_transaction(tx_hash).await.unwrap().unwrap();
+                        val_in_list.push(
+                            (utils::u256_to_bigdecimal(tx.value) / &self.wei_in_eth)
+                                .to_f64()
+                                .unwrap(),
+                        );
+                        height_in_list.push(tx.block_number.unwrap().as_u64());
+                        gas_in_list.push(utils::u256_to_bigdecimal(tx.gas).to_f64().unwrap());
+                        gasprice_in_list.push(
+                            utils::u256_to_bigdecimal(tx.gas_price.unwrap_or(U256::from(0)))
+                                .to_f64()
+                                .unwrap(),
+                        );
                     }
-                    self.crawled_edges.lock().unwrap().insert(e.t);
-
-                    let result = self
-                        .db
-                        .get(SpecificVertexQuery::single(e.outbound_id))
-                        .unwrap();
-                    let result = &result[0];
 
                     if hop != 0 {
+                        if self.crawled_edges.lock().unwrap().contains(&e.t) {
+                            continue;
+                        }
+                        self.crawled_edges.lock().unwrap().insert(e.t);
+    
+                        let result = self
+                            .db
+                            .get(SpecificVertexQuery::single(e.outbound_id))
+                            .unwrap();
+                        let result = &result[0];
+
                         if let QueryOutputValue::Vertices(froms) = result {
                             let from = &froms[0]; // must only one
                             self.g_output

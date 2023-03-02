@@ -75,7 +75,15 @@ enum Action {
 
         /// output filename
         #[arg(short, long, default_value = "subgraph.csv")]
-        output: String,
+        graph_output: String,
+
+        /// output filename
+        #[arg(short, long, default_value = "features.csv")]
+        feature_output: String,
+
+        /// max tx
+        #[arg(short, long, default_value_t = 100)]
+        max_tx: usize,
     },
 }
 
@@ -137,7 +145,9 @@ fn main() {
             mut vertices,
             input,
             hop,
-            output,
+            graph_output,
+            feature_output,
+            max_tx,
         } => {
             if let Some(input) = input {
                 let content = fs::read_to_string(input).unwrap();
@@ -149,7 +159,7 @@ fn main() {
                 .build()
                 .unwrap()
                 .block_on(async {
-                    let mut fe = feature::FeatureExtracter::new(args.rocks, &mut opts, output);
+                    let mut fe = feature::FeatureExtracter::new(args.rocks, &mut opts, graph_output, feature_output, max_tx);
                     fe.gen_subgraph_features(&mut vertices, hop).await
                 })
         }

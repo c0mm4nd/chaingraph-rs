@@ -55,4 +55,12 @@ mod tests {
         let b = u256_to_bigdecimal(U256::from_dec_str("10").unwrap());
         assert_eq!((a / b).to_f64().unwrap(), 1.5);
     }
+
+    #[test]
+    fn test_gini() {
+        let i = gini(&vec![50., 50., 70., 70., 70., 90., 150., 150., 150., 150.]);
+        
+        // https://www.statology.org/gini-coefficient-python/
+        assert_eq!(i, 0.226);
+    }
 }
