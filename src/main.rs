@@ -69,14 +69,6 @@ enum Action {
         #[arg(short, long)]
         input: Option<String>,
 
-        /// Max hop count
-        #[arg(long, default_value_t = 1)]
-        hop: usize,
-
-        /// output filename
-        #[arg(short, long, default_value = "subgraph.csv")]
-        graph_output: String,
-
         /// output filename
         #[arg(short, long, default_value = "features.csv")]
         feature_output: String,
@@ -144,8 +136,6 @@ fn main() {
         Action::Feature {
             mut vertices,
             input,
-            hop,
-            graph_output,
             feature_output,
             max_tx,
         } => {
@@ -159,8 +149,8 @@ fn main() {
                 .build()
                 .unwrap()
                 .block_on(async {
-                    let mut fe = feature::FeatureExtracter::new(args.rocks, &mut opts, graph_output, feature_output, max_tx);
-                    fe.gen_subgraph_features(&mut vertices, hop).await
+                    let mut fe = feature::FeatureExtracter::new(args.rocks, &mut opts,  feature_output, max_tx);
+                    fe.gen_subgraph_features(&mut vertices).await
                 })
         }
     }

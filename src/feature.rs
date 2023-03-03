@@ -5,12 +5,10 @@ use std::{
 };
 
 use crate::utils;
-use async_recursion::async_recursion;
 use bigdecimal::{BigDecimal, ToPrimitive, Zero};
 use ethers::{prelude::*, providers::Provider, utils::WEI_IN_ETHER};
-use hashbrown::HashSet;
 use indradb::{
-    Database, Identifier, QueryExt, QueryOutputValue, RocksdbDatastore, SpecificEdgeQuery,
+    Database, QueryExt, QueryOutputValue, RocksdbDatastore,
     SpecificVertexQuery, Vertex,
 };
 use rocksdb::Options;
@@ -205,9 +203,6 @@ impl AddressFeature {
 pub struct FeatureExtracter {
     db: Arc<Database<RocksdbDatastore>>,
     wei_in_eth: BigDecimal,
-    crawled_vertices: Arc<Mutex<HashSet<Identifier>>>,
-    crawled_edges: Arc<Mutex<HashSet<Identifier>>>,
-    g_output: Arc<Mutex<csv::Writer<File>>>,
     f_output: Arc<Mutex<csv::Writer<File>>>,
     max_sample: usize,
 }
@@ -216,7 +211,6 @@ impl FeatureExtracter {
     pub fn new(
         path: String,
         opts: &mut Options,
-        g_output: String,
         f_output: String,
         max_tx: usize,
     ) -> Self {
@@ -227,28 +221,19 @@ impl FeatureExtracter {
 
         let db = RocksdbDatastore::new_db_with_options(path, opts).unwrap();
 
-        let mut g_output = csv::Writer::from_path(g_output).unwrap();
         let mut f_output = csv::Writer::from_path(f_output).unwrap();
-
-        let mut crawled_edges: HashSet<Identifier> = HashSet::new();
-        let mut crawled_vertices: HashSet<Identifier> = HashSet::new();
 
         FeatureExtracter {
             db: Arc::new(db),
 
             wei_in_eth: utils::u256_to_bigdecimal(WEI_IN_ETHER),
-
-            crawled_edges: Arc::new(Mutex::new(crawled_edges)),
-            crawled_vertices: Arc::new(Mutex::new(crawled_vertices)),
-
-            g_output: Arc::new(Mutex::new(g_output)),
             f_output: Arc::new(Mutex::new(f_output)),
             max_sample: max_tx,
         }
     }
 
-    pub async fn gen_subgraph_features(&mut self, v: &mut Vec<String>, hop: usize) {
-        let provider = Provider::<Ws>::connect("ws://172.24.1.2:8545")
+    pub async fn gen_subgraph_features(&mut self, v: &mut Vec<String>) {
+        let provider = Provider::<Ws>::connect("ws://127.0.0.1:8545")
             .await
             .unwrap(); // // Provider::<Ws>::connect("wss://mainnet.infura.io/ws/v3/dc6980e1063b421bbcfef8d7f58ccd43")
 
@@ -265,16 +250,14 @@ impl FeatureExtracter {
             if let QueryOutputValue::Vertices(vertices) = out_val {
                 for v in &vertices {
                     let provider = Arc::clone(&provider_arc);
-                    self.run_hop(provider, hop, v).await
+                    self.run_hop(provider, v).await
                 }
             }
         }
     }
 
-    #[async_recursion]
-    async fn run_hop(&mut self, provider: Arc<Provider<Ws>>, hop: usize, v: &Vertex) {
+    async fn run_hop(&mut self, provider: Arc<Provider<Ws>>, v: &Vertex) {
         log::debug!("{:?}", v);
-        let mut next_hop_vertices: Vec<Vertex> = Vec::new();
 
         let out_q = SpecificVertexQuery::single(v.id).outbound().unwrap();
         let out_e = self.db.get(out_q).unwrap();
@@ -293,7 +276,7 @@ impl FeatureExtracter {
             let from = v.t.as_str();
 
             if let QueryOutputValue::Edges(edges) = edges_list {
-                log::debug!("hop {}:  {} has {} outbound edges", hop, from, edges.len());
+                log::debug!("{} has {} outbound edges", from, edges.len());
 
                 for (i, e) in edges.iter().enumerate() {
                     assert!(e.outbound_id == v.id, "{:?} != {:?}", e, v.id);
@@ -314,29 +297,6 @@ impl FeatureExtracter {
                                 .unwrap(),
                         );
                     }
-
-                    if hop != 0 {
-                        if self.crawled_edges.lock().unwrap().contains(&e.t) {
-                            continue;
-                        }
-                        self.crawled_edges.lock().unwrap().insert(e.t);
-
-                        let result = self
-                            .db
-                            .get(SpecificVertexQuery::single(e.inbound_id))
-                            .unwrap();
-                        let result = &result[0]; // must be 1 len
-
-                        if let QueryOutputValue::Vertices(tos) = result {
-                            let to = &tos[0];
-                            self.g_output
-                                .lock()
-                                .unwrap()
-                                .write_record([from, to.t.as_str(), &e.t])
-                                .unwrap();
-                            next_hop_vertices.push(to.to_owned());
-                        }
-                    }
                 }
             }
         }
@@ -348,7 +308,7 @@ impl FeatureExtracter {
             let to = v.t.as_str();
 
             if let QueryOutputValue::Edges(edges) = edges_list {
-                log::debug!("hop {}:  {} has {} inbound edges", hop, to, edges.len());
+                log::debug!("{} has {} inbound edges", to, edges.len());
 
                 for (i, e) in edges.iter().enumerate() {
                     assert!(e.inbound_id == v.id);
@@ -368,29 +328,6 @@ impl FeatureExtracter {
                                 .to_f64()
                                 .unwrap(),
                         );
-                    }
-
-                    if hop != 0 {
-                        if self.crawled_edges.lock().unwrap().contains(&e.t) {
-                            continue;
-                        }
-                        self.crawled_edges.lock().unwrap().insert(e.t);
-    
-                        let result = self
-                            .db
-                            .get(SpecificVertexQuery::single(e.outbound_id))
-                            .unwrap();
-                        let result = &result[0];
-
-                        if let QueryOutputValue::Vertices(froms) = result {
-                            let from = &froms[0]; // must only one
-                            self.g_output
-                                .lock()
-                                .unwrap()
-                                .write_record([from.t.as_str(), to, &e.t])
-                                .unwrap();
-                            next_hop_vertices.push(from.to_owned());
-                        }
                     }
                 }
             }
@@ -424,26 +361,5 @@ impl FeatureExtracter {
             .serialize(addr_feature)
             .unwrap();
         // write feature end
-
-        // start next hop
-        let mut handles = Vec::new();
-        for next_v in next_hop_vertices {
-            if self.crawled_vertices.lock().unwrap().contains(&next_v.t) {
-                continue;
-            }
-            self.crawled_vertices.lock().unwrap().insert(next_v.t);
-
-            let mut fe_clone = self.clone();
-            let provider = provider.clone();
-
-            let task = tokio::spawn(async move {
-                fe_clone.run_hop(provider, hop - 1, &next_v).await;
-            });
-            handles.push(task);
-        }
-
-        for task in handles {
-            task.await.unwrap();
-        }
     }
 }
