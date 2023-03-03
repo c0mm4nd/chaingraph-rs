@@ -246,13 +246,22 @@ impl FeatureExtracter {
         let q = SpecificVertexQuery::new(ids);
         let result = self.db.get(q).unwrap();
         let provider_arc = Arc::new(provider);
+        
+        let mut handles = Vec::new();
         for out_val in result {
             if let QueryOutputValue::Vertices(vertices) = out_val {
-                for v in &vertices {
-                    let provider = Arc::clone(&provider_arc);
-                    self.run_hop(provider, v).await
-                }
+                assert_eq!(vertices.len(), 0);
+                let mut fe = self.clone();
+
+                let provider = Arc::clone(&provider_arc);
+                handles.push(tokio::spawn(async move {
+                    fe.run_hop(provider, &vertices[0]).await;
+                }));
             }
+        }
+
+        for handle in handles {
+            handle.await.unwrap();
         }
     }
 
