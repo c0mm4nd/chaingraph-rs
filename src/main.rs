@@ -57,6 +57,10 @@ enum Action {
         /// output filename
         #[arg(value_enum, short, long, default_value_t = subgraph::GraphType::CsvAdj)]
         graph_type: subgraph::GraphType,
+
+        /// Max tx
+        #[arg(long, default_value_t = 100)]
+        max_tx: usize,
     },
     Dump {},
     Repair {},
@@ -116,6 +120,7 @@ fn main() {
             hop,
             output,
             graph_type,
+            max_tx,
         } => {
             if let Some(input) = input {
                 let content = fs::read_to_string(input).unwrap();
@@ -129,6 +134,7 @@ fn main() {
                 hop,
                 output,
                 graph_type,
+                max_tx,
             )
         }
         Action::Dump {} => dump::json(args.rocks, &opts),
@@ -149,7 +155,12 @@ fn main() {
                 .build()
                 .unwrap()
                 .block_on(async {
-                    let mut fe = feature::FeatureExtracter::new(args.rocks, &mut opts,  feature_output, max_tx);
+                    let mut fe = feature::FeatureExtracter::new(
+                        args.rocks,
+                        &mut opts,
+                        feature_output,
+                        max_tx,
+                    );
                     fe.gen_subgraph_features(&mut vertices).await
                 })
         }

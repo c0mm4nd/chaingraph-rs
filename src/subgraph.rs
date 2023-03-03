@@ -5,6 +5,7 @@ use hashbrown::HashSet;
 use indradb::{
     Database, Identifier, QueryExt, QueryOutputValue, RocksdbDatastore, SpecificVertexQuery, Vertex,
 };
+use rand::seq::SliceRandom;
 use rocksdb::Options;
 use uuid::Uuid;
 
@@ -22,6 +23,7 @@ pub fn gen_subgraph(
     hop: usize,
     output: String,
     graph_type: GraphType,
+    max_tx: usize,
 ) {
     opts.optimize_for_point_lookup(0x100000000);
     opts.set_optimize_filters_for_hits(true);
@@ -54,6 +56,7 @@ pub fn gen_subgraph(
                         v,
                         &mut crawled_edges,
                         &mut crawled_vertices,
+                        max_tx,
                     ),
                     _ => todo!(),
                 }
@@ -69,6 +72,7 @@ fn run_hop(
     v: &Vertex,
     crawled_edges: &mut HashSet<Identifier>,
     crawled_vertices: &mut HashSet<Identifier>,
+    max_tx: usize,
 ) {
     if hop == 0 {
         return;
@@ -79,13 +83,15 @@ fn run_hop(
     let out_q = SpecificVertexQuery::single(v.id).outbound().unwrap();
     let out_e = datastore.get(out_q).unwrap();
 
+    let mut rng = rand::thread_rng();
+
     for edges_list in out_e {
         let from = v.t.as_str();
 
         if let QueryOutputValue::Edges(edges) = edges_list {
             log::debug!("hop {}:  {} has {} outbound edges", hop, from, edges.len());
 
-            for e in edges {
+            for e in edges.choose_multiple(&mut rng, max_tx) {
                 assert!(e.outbound_id == v.id, "{:?} != {:?}", e, v.id);
 
                 if crawled_edges.contains(&e.t) {
@@ -116,7 +122,7 @@ fn run_hop(
         if let QueryOutputValue::Edges(edges) = edges_list {
             log::debug!("hop {}:  {} has {} inbound edges", hop, to, edges.len());
 
-            for e in edges {
+            for e in edges.choose_multiple(&mut rng, max_tx) {
                 assert!(e.inbound_id == v.id);
 
                 if crawled_edges.contains(&e.t) {
@@ -150,6 +156,7 @@ fn run_hop(
             &next_v,
             crawled_edges,
             crawled_vertices,
+            max_tx,
         );
     }
 }

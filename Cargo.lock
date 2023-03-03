@@ -496,6 +496,7 @@ dependencies = [
  "log",
  "num_cpus",
  "pretty_env_logger",
+ "rand",
  "rocksdb",
  "rug",
  "rustpython-vm",
