@@ -8,8 +8,7 @@ use crate::utils;
 use bigdecimal::{BigDecimal, ToPrimitive, Zero};
 use ethers::{prelude::*, providers::Provider, utils::WEI_IN_ETHER};
 use indradb::{
-    Database, QueryExt, QueryOutputValue, RocksdbDatastore,
-    SpecificVertexQuery, Vertex,
+    Database, QueryExt, QueryOutputValue, RocksdbDatastore, SpecificVertexQuery, Vertex,
 };
 use rocksdb::Options;
 use serde::{Deserialize, Serialize};
@@ -208,12 +207,7 @@ pub struct FeatureExtracter {
 }
 
 impl FeatureExtracter {
-    pub fn new(
-        path: String,
-        opts: &mut Options,
-        f_output: String,
-        max_tx: usize,
-    ) -> Self {
+    pub fn new(path: String, opts: &mut Options, f_output: String, max_tx: usize) -> Self {
         opts.optimize_for_point_lookup(0x100000000);
         opts.set_optimize_filters_for_hits(true);
         opts.optimize_level_style_compaction(0x100000000);
@@ -238,24 +232,30 @@ impl FeatureExtracter {
             .unwrap(); // // Provider::<Ws>::connect("wss://mainnet.infura.io/ws/v3/dc6980e1063b421bbcfef8d7f58ccd43")
 
         // convert v to ids
-        v.sort();
-        v.dedup();
+        // v.sort();
+        // v.dedup();
         let ids: Vec<Uuid> = v.iter().map(|addr| utils::addr_to_uuid(addr)).collect();
         log::debug!("{} addresses", ids.len());
 
         let q = SpecificVertexQuery::new(ids);
         let result = self.db.get(q).unwrap();
         let provider_arc = Arc::new(provider);
-        
-        let mut handles = Vec::new();
-        for out_val in result {
-            if let QueryOutputValue::Vertices(vertices) = out_val {
-                assert_eq!(vertices.len(), 0);
-                let mut fe = self.clone();
 
+        let mut handles = Vec::new();
+        assert_eq!(result.len(), 1);
+
+        if let QueryOutputValue::Vertices(vertices) = result[0].clone() {
+            for v in vertices {
+                let db = Arc::clone(&self.db);
+                let f_output = Arc::clone(&self.f_output);
                 let provider = Arc::clone(&provider_arc);
+
+                let max_sample = self.max_sample.clone();
+                let wei_in_eth = self.wei_in_eth.clone();
+
                 handles.push(tokio::spawn(async move {
-                    fe.run_hop(provider, &vertices[0]).await;
+                    Self::run_hop(db, provider, &v, f_output, max_sample, wei_in_eth)
+                        .await;
                 }));
             }
         }
@@ -265,21 +265,28 @@ impl FeatureExtracter {
         }
     }
 
-    async fn run_hop(&mut self, provider: Arc<Provider<Ws>>, v: &Vertex) {
+    async fn run_hop(
+        db: Arc<Database<RocksdbDatastore>>,
+        provider: Arc<Provider<Ws>>,
+        v: &Vertex,
+        f_output: Arc<Mutex<csv::Writer<File>>>,
+        max_sample: usize,
+        wei_in_eth: BigDecimal,
+    ) {
         log::debug!("{:?}", v);
 
         let out_q = SpecificVertexQuery::single(v.id).outbound().unwrap();
-        let out_e = self.db.get(out_q).unwrap();
+        let out_e = db.get(out_q).unwrap();
 
         // init all lists
-        let mut val_in_list = Vec::with_capacity(self.max_sample);
-        let mut val_out_list = Vec::with_capacity(self.max_sample);
-        let mut height_in_list = Vec::with_capacity(self.max_sample);
-        let mut height_out_list = Vec::with_capacity(self.max_sample);
-        let mut gas_in_list = Vec::with_capacity(self.max_sample);
-        let mut gas_out_list = Vec::with_capacity(self.max_sample);
-        let mut gasprice_in_list = Vec::with_capacity(self.max_sample);
-        let mut gasprice_out_list = Vec::with_capacity(self.max_sample);
+        let mut val_in_list = Vec::with_capacity(max_sample);
+        let mut val_out_list = Vec::with_capacity(max_sample);
+        let mut height_in_list = Vec::with_capacity(max_sample);
+        let mut height_out_list = Vec::with_capacity(max_sample);
+        let mut gas_in_list = Vec::with_capacity(max_sample);
+        let mut gas_out_list = Vec::with_capacity(max_sample);
+        let mut gasprice_in_list = Vec::with_capacity(max_sample);
+        let mut gasprice_out_list = Vec::with_capacity(max_sample);
 
         for edges_list in out_e {
             let from = v.t.as_str();
@@ -290,11 +297,11 @@ impl FeatureExtracter {
                 for (i, e) in edges.iter().enumerate() {
                     assert!(e.outbound_id == v.id, "{:?} != {:?}", e, v.id);
 
-                    if i < self.max_sample {
+                    if i < max_sample {
                         let tx_hash = H256::from_str(e.t.as_str()).unwrap();
                         let tx = provider.get_transaction(tx_hash).await.unwrap().unwrap();
                         val_out_list.push(
-                            (utils::u256_to_bigdecimal(tx.value) / &self.wei_in_eth)
+                            (utils::u256_to_bigdecimal(tx.value) / &wei_in_eth)
                                 .to_f64()
                                 .unwrap(),
                         );
@@ -311,7 +318,7 @@ impl FeatureExtracter {
         }
 
         let in_q = SpecificVertexQuery::single(v.id).inbound().unwrap();
-        let in_e = self.db.get(in_q).unwrap();
+        let in_e = db.get(in_q).unwrap();
 
         for edges_list in in_e {
             let to = v.t.as_str();
@@ -322,11 +329,11 @@ impl FeatureExtracter {
                 for (i, e) in edges.iter().enumerate() {
                     assert!(e.inbound_id == v.id);
 
-                    if i < self.max_sample {
+                    if i < max_sample {
                         let tx_hash = H256::from_str(e.t.as_str()).unwrap();
                         let tx = provider.get_transaction(tx_hash).await.unwrap().unwrap();
                         val_in_list.push(
-                            (utils::u256_to_bigdecimal(tx.value) / &self.wei_in_eth)
+                            (utils::u256_to_bigdecimal(tx.value) / &wei_in_eth)
                                 .to_f64()
                                 .unwrap(),
                         );
@@ -348,7 +355,7 @@ impl FeatureExtracter {
             .get_balance(addr, Some(16_200_000.into()))
             .await
             .unwrap();
-        let bal = (utils::u256_to_bigdecimal(balance) / &self.wei_in_eth)
+        let bal = (utils::u256_to_bigdecimal(balance) / &wei_in_eth)
             .to_f64()
             .unwrap();
 
@@ -364,11 +371,7 @@ impl FeatureExtracter {
             gasprice_in_list,
             gasprice_out_list,
         );
-        self.f_output
-            .lock()
-            .unwrap()
-            .serialize(addr_feature)
-            .unwrap();
+        f_output.lock().unwrap().serialize(addr_feature).unwrap();
         // write feature end
     }
 }
