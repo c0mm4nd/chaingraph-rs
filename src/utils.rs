@@ -1,13 +1,22 @@
 use std::str::FromStr;
 
 use bigdecimal::BigDecimal;
-use ethers::types::{Address, U256};
+use ethers::types::{Address, U256, H160};
 use uuid::Uuid;
 
 pub fn addr_to_uuid(addr: &str) -> Uuid {
     let address = Address::from_str(addr).unwrap();
-    let id = Uuid::new_v5(&Uuid::NAMESPACE_OID, address.as_bytes()); // sha1 hash = 20bytes
+    let id = Uuid::new_v5(&Uuid::NAMESPACE_OID, address.as_bytes()); // sha1 hash = 16bytes
     id
+}
+
+pub fn h160_to_uuid(address: &H160) -> Uuid {
+    let id = Uuid::new_v5(&Uuid::NAMESPACE_OID, address.as_bytes()); // sha1 hash = 16bytes
+    id
+}
+
+pub fn str_to_uuid(str: &str) -> Uuid {
+    Uuid::new_v5(&Uuid::NAMESPACE_OID, str.as_bytes())
 }
 
 pub fn u256_to_bigdecimal(u256: U256) -> BigDecimal {

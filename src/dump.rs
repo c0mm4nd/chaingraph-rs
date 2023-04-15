@@ -1,4 +1,6 @@
+use ethers::utils::hex;
 use rocksdb::{IteratorMode, Options, DB};
+use uuid::Uuid;
 
 const CF_NAMES: [&str; 8] = [
     "vertices:v2",
@@ -17,7 +19,9 @@ pub fn json(path: String, opts: &Options) {
         let iter = db.iterator_cf(db.cf_handle(cf_name).unwrap(), IteratorMode::Start);
         for row in iter {
             let (k, v) = row.unwrap();
-            println!("{cf_name}: {k:?} -> {v:?}");
+            let key = hex::encode(k);
+            let value = hex::encode(v);
+            println!("{cf_name}: {key:?} -> {value:?}");
         }
     }
 }

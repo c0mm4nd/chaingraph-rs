@@ -1,9 +1,11 @@
 use std::fs;
 
 use clap::{arg, command, Parser};
+use rocksdb::DB;
 
 mod dump;
 mod feature;
+mod link;
 mod load;
 mod repair;
 mod subgraph;
@@ -57,13 +59,10 @@ enum Action {
         /// output filename
         #[arg(value_enum, short, long, default_value_t = subgraph::GraphType::CsvAdj)]
         graph_type: subgraph::GraphType,
-
-        /// Max tx
-        #[arg(long, default_value_t = 100)]
-        max_tx: usize,
     },
     Dump {},
     Repair {},
+    Compact {},
     Feature {
         /// contains the verteies
         #[arg(short, long)]
@@ -76,10 +75,17 @@ enum Action {
         /// output filename
         #[arg(short, long, default_value = "features.csv")]
         feature_output: String,
+    },
+    Link {
+        /// contains the verteies
+        #[arg(short, long, default_value = "http://127.0.0.1:8545")]
+        ethereum: String,
 
-        /// max tx
-        #[arg(short, long, default_value_t = 100)]
-        max_tx: usize,
+        #[arg(short, long, default_value_t = 0)]
+        thread_count: usize,
+
+        #[arg(long, default_value_t = 0)]
+        end: usize,
     },
 }
 
@@ -93,16 +99,16 @@ fn main() {
     opts.set_compaction_style(rocksdb::DBCompactionStyle::Level);
 
     opts.set_max_write_buffer_number(3);
-    opts.set_target_file_size_base(67_108_864); // 64mb
+    opts.set_target_file_size_base(0x4000000); // 64mb
     opts.set_level_zero_file_num_compaction_trigger(8);
-    // opts.set_level_zero_slowdown_writes_trigger(17);
-    opts.set_level_zero_slowdown_writes_trigger(-1);
+    opts.set_level_zero_slowdown_writes_trigger(17);
     opts.set_level_zero_stop_writes_trigger(24);
     opts.set_num_levels(4);
     opts.set_max_bytes_for_level_base(536_870_912); // 512mb
     opts.set_max_bytes_for_level_multiplier(8.0);
-    opts.set_enable_blob_files(true);
-    opts.enable_statistics();
+    // opts.set_enable_blob_files(true);
+    // opts.set_min_blob_size(0x0); // all in blob
+    // opts.enable_statistics();
 
     // let v_count: usize = match datastore.get(AllVertexQuery.count().unwrap()).unwrap()[0] {
     //     QueryOutputValue::Count(count) => count.try_into().unwrap(),
@@ -120,7 +126,6 @@ fn main() {
             hop,
             output,
             graph_type,
-            max_tx,
         } => {
             if let Some(input) = input {
                 let content = fs::read_to_string(input).unwrap();
@@ -134,16 +139,28 @@ fn main() {
                 hop,
                 output,
                 graph_type,
-                max_tx,
             )
         }
         Action::Dump {} => dump::json(args.rocks, &opts),
         Action::Repair {} => repair::repair_db(args.rocks, &opts),
+        Action::Compact {} => {
+            const CF_NAMES: [&str; 8] = [
+                "vertices:v2",
+                "edge_ranges:v2",
+                "reversed_edge_ranges:v2",
+                "vertex_properties:v2",
+                "edge_properties:v2",
+                "vertex_property_values:v2",
+                "edge_property_values:v2",
+                "metadata:v2",
+            ];
+            let db = DB::open_cf(&opts, args.rocks, CF_NAMES).unwrap();
+            db.compact_range::<Vec<u8>, Vec<u8>>(None, None);
+        }
         Action::Feature {
             mut vertices,
             input,
             feature_output,
-            max_tx,
         } => {
             if let Some(input) = input {
                 let content = fs::read_to_string(input).unwrap();
@@ -155,15 +172,30 @@ fn main() {
                 .build()
                 .unwrap()
                 .block_on(async {
-                    let mut fe = feature::FeatureExtracter::new(
-                        args.rocks,
-                        &mut opts,
-                        feature_output,
-                        max_tx,
-                    );
+                    let mut fe =
+                        feature::FeatureExtracter::new(args.rocks, &mut opts, feature_output);
                     fe.gen_subgraph_features(&mut vertices).await
                 })
         }
+        Action::Link {
+            ethereum,
+            thread_count,
+            end,
+        } => tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let thread_count = if thread_count <= 0 {
+                    num_cpus::get()
+                } else {
+                    thread_count
+                };
+
+                let linker = link::Linker::new(ethereum, args.rocks, &mut opts).await;
+                linker.sync(thread_count, end).await;
+            }),
+        _ => panic!("unsupported"),
     }
 
     // drop(datastore);

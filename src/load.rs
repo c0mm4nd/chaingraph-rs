@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::utils;
+use csv::StringRecord;
 use indradb::{
     AllEdgeQuery, BulkInsertItem, CountQueryExt, Edge, Identifier, QueryOutputValue,
     RocksdbDatastore, Vertex,
@@ -31,6 +32,7 @@ pub fn bulk_insert(path: String, opts: &mut Options, csv: String, mut fail: usiz
 
     let mut items = Vec::new();
     let mut reader = csv::Reader::from_path(csv).unwrap();
+    reader.set_headers(StringRecord::from(vec!["from", "to", "edge"]));
 
     for (index, result) in reader.deserialize().enumerate() {
         if index < fail {
@@ -58,19 +60,22 @@ pub fn bulk_insert(path: String, opts: &mut Options, csv: String, mut fail: usiz
 fn job(record: Record, items: &mut Vec<BulkInsertItem>) {
     let from = &record["from"];
     let to = &record["to"];
-    let hash = &record["hash"];
+    let hash = &record["edge"];
     // let block_num_hexstr = &record["block_number"];
 
-    let from_id = utils::addr_to_uuid(from.as_str());
+    let from_id = utils::str_to_uuid(from.as_str());
     let v = Vertex::with_id(from_id, Identifier::new(from).unwrap());
     items.push(indradb::BulkInsertItem::Vertex(v));
 
-    let to_id = utils::addr_to_uuid(to.as_str());
+    let to_id = utils::str_to_uuid(to.as_str());
     let v = Vertex::with_id(to_id, Identifier::new(to).unwrap());
     items.push(indradb::BulkInsertItem::Vertex(v));
 
     let edge = Edge::new(from_id, Identifier::new(hash).unwrap(), to_id);
-    items.push(indradb::BulkInsertItem::Edge(edge))
+    items.push(indradb::BulkInsertItem::Edge(edge));
 
+
+    // let val = indradb::Json::new(serde_json::Value::from(record["height"].as_str()));
+    // items.push(indradb::BulkInsertItem::VertexProperty(to_id, Identifier::new("height").unwrap(), val));
     // println!("pushed edge #{}", index); // 210_260_957 1_807_472_442
 }
