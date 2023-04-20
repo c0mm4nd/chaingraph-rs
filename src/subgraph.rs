@@ -16,6 +16,19 @@ pub enum GraphType {
     Rdf,
 }
 
+#[derive(clap::ValueEnum, Clone, Copy, Debug)]
+pub enum VType {
+    ETHAddress,
+    String,
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq)]
+pub enum Direction {
+    Out,
+    In,
+    Both,
+}
+
 pub fn gen_subgraph(
     path: String,
     opts: &mut Options,
@@ -23,6 +36,8 @@ pub fn gen_subgraph(
     hop: usize,
     output: String,
     graph_type: GraphType,
+    v_type: VType,
+    direction: Direction,
 ) {
     opts.optimize_for_point_lookup(0x100000000);
     opts.set_optimize_filters_for_hits(true);
@@ -33,7 +48,13 @@ pub fn gen_subgraph(
     // convert v to ids
     v.sort();
     v.dedup();
-    let ids: Vec<Uuid> = v.iter().map(|addr| utils::addr_to_uuid(addr)).collect();
+    let ids: Vec<Uuid> = v
+        .iter()
+        .map(|addr| match v_type {
+            VType::ETHAddress => utils::addr_to_uuid(addr),
+            VType::String => utils::str_to_uuid(addr),
+        })
+        .collect();
     log::debug!("{} addresses", ids.len());
 
     let mut output = csv::Writer::from_path(output).unwrap();
@@ -43,6 +64,8 @@ pub fn gen_subgraph(
 
     for out_val in result {
         if let QueryOutputValue::Vertices(vertices) = out_val {
+            log::debug!("{} vertices", vertices.len());
+
             let mut crawled_edges: HashSet<Identifier> = HashSet::new();
             let mut crawled_vertices: HashSet<Identifier> = HashSet::new();
 
@@ -55,6 +78,7 @@ pub fn gen_subgraph(
                         v,
                         &mut crawled_edges,
                         &mut crawled_vertices,
+                        direction,
                     ),
                     _ => todo!(),
                 }
@@ -70,70 +94,77 @@ fn run_hop(
     v: &Vertex,
     crawled_edges: &mut HashSet<Identifier>,
     crawled_vertices: &mut HashSet<Identifier>,
+    direction: Direction,
 ) {
     if hop == 0 {
         return;
     };
-    log::debug!("{:?}", v);
+    // log::debug!("{:?}", v);
     let mut next_hop_vertices: Vec<Vertex> = Vec::new();
 
-    let out_q = SpecificVertexQuery::single(v.id).outbound().unwrap();
-    let out_e = datastore.get(out_q).unwrap();
+    if direction == Direction::Both || direction == Direction::Out {
+        let out_q = SpecificVertexQuery::single(v.id).outbound().unwrap();
+        let out_e = datastore.get(out_q).unwrap();
 
-    for edges_list in out_e {
-        let from = v.t.as_str();
+        for edges_list in out_e {
+            let from = v.t.as_str();
 
-        if let QueryOutputValue::Edges(edges) = edges_list {
-            log::debug!("hop {}:  {} has {} outbound edges", hop, from, edges.len());
+            if let QueryOutputValue::Edges(edges) = edges_list {
+                log::debug!("hop {}:  {} has {} outbound edges", hop, from, edges.len());
 
-            for e in edges { // .choose_multiple(&mut rng, max_tx) {
-                assert!(e.outbound_id == v.id, "{:?} != {:?}", e, v.id);
+                for e in edges {
+                    // .choose_multiple(&mut rng, max_tx) {
+                    assert!(e.outbound_id == v.id, "{:?} != {:?}", e, v.id);
 
-                if crawled_edges.contains(&e.t) {
-                    continue;
-                }
-                crawled_edges.insert(e.t);
+                    if crawled_edges.contains(&e.t) {
+                        continue;
+                    }
+                    crawled_edges.insert(e.t);
 
-                let result = datastore
-                    .get(SpecificVertexQuery::single(e.inbound_id))
-                    .unwrap();
-                let result = &result[0]; // must be 1 len
+                    let result = datastore
+                        .get(SpecificVertexQuery::single(e.inbound_id))
+                        .unwrap();
+                    let result = &result[0]; // must be 1 len
 
-                if let QueryOutputValue::Vertices(tos) = result {
-                    let to = &tos[0];
-                    output.write_record([from, to.t.as_str(), &e.t]).unwrap();
-                    next_hop_vertices.push(to.to_owned());
+                    if let QueryOutputValue::Vertices(tos) = result {
+                        let to = &tos[0];
+                        output.write_record([from, to.t.as_str(), &e.t]).unwrap();
+                        next_hop_vertices.push(to.to_owned());
+                    }
                 }
             }
         }
     }
 
-    let in_q = SpecificVertexQuery::single(v.id).inbound().unwrap();
-    let in_e = datastore.get(in_q).unwrap();
+    if direction == Direction::Both || direction == Direction::In {
+        let in_q = SpecificVertexQuery::single(v.id).inbound().unwrap();
+        let in_e = datastore.get(in_q).unwrap();
 
-    for edges_list in in_e {
-        let to = v.t.as_str();
+        for edges_list in in_e {
+            let to = v.t.as_str();
 
-        if let QueryOutputValue::Edges(edges) = edges_list {
-            log::debug!("hop {}:  {} has {} inbound edges", hop, to, edges.len());
+            if let QueryOutputValue::Edges(edges) = edges_list {
+                log::debug!("hop {}:  {} has {} inbound edges", hop, to, edges.len());
 
-            for e in edges { //.choose_multiple(&mut rng, max_tx) {
-                assert!(e.inbound_id == v.id);
+                for e in edges {
+                    //.choose_multiple(&mut rng, max_tx) {
+                    assert!(e.inbound_id == v.id);
 
-                if crawled_edges.contains(&e.t) {
-                    continue;
-                }
-                crawled_edges.insert(e.t);
+                    if crawled_edges.contains(&e.t) {
+                        continue;
+                    }
+                    crawled_edges.insert(e.t);
 
-                let result = datastore
-                    .get(SpecificVertexQuery::single(e.outbound_id))
-                    .unwrap();
-                let result = &result[0];
+                    let result = datastore
+                        .get(SpecificVertexQuery::single(e.outbound_id))
+                        .unwrap();
+                    let result = &result[0];
 
-                if let QueryOutputValue::Vertices(froms) = result {
-                    let from = &froms[0]; // must only one
-                    output.write_record([from.t.as_str(), to, &e.t]).unwrap();
-                    next_hop_vertices.push(from.to_owned());
+                    if let QueryOutputValue::Vertices(froms) = result {
+                        let from = &froms[0]; // must only one
+                        output.write_record([from.t.as_str(), to, &e.t]).unwrap();
+                        next_hop_vertices.push(from.to_owned());
+                    }
                 }
             }
         }
@@ -151,6 +182,7 @@ fn run_hop(
             &next_v,
             crawled_edges,
             crawled_vertices,
+            direction,
         );
     }
 }

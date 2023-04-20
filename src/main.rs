@@ -10,6 +10,7 @@ mod load;
 mod repair;
 mod subgraph;
 mod utils;
+mod index;
 
 extern crate pretty_env_logger;
 
@@ -59,6 +60,14 @@ enum Action {
         /// output filename
         #[arg(value_enum, short, long, default_value_t = subgraph::GraphType::CsvAdj)]
         graph_type: subgraph::GraphType,
+
+        /// output filename
+        #[arg(value_enum, long, default_value_t = subgraph::VType::ETHAddress)]
+        v_type: subgraph::VType,
+
+        /// output filename
+        #[arg(value_enum, short, long, default_value_t = subgraph::Direction::Both)]
+        direction: subgraph::Direction,
     },
     Dump {},
     Repair {},
@@ -87,6 +96,10 @@ enum Action {
         #[arg(long, default_value_t = 0)]
         end: usize,
     },
+    Index {
+        #[arg(short, long)]
+        name: String,
+    }
 }
 
 fn main() {
@@ -126,6 +139,8 @@ fn main() {
             hop,
             output,
             graph_type,
+            v_type,
+            direction,
         } => {
             if let Some(input) = input {
                 let content = fs::read_to_string(input).unwrap();
@@ -139,6 +154,8 @@ fn main() {
                 hop,
                 output,
                 graph_type,
+                v_type,
+                direction,
             )
         }
         Action::Dump {} => dump::json(args.rocks, &opts),
@@ -195,6 +212,11 @@ fn main() {
                 let linker = link::Linker::new(ethereum, args.rocks, &mut opts).await;
                 linker.sync(thread_count, end).await;
             }),
+        Action::Index {
+            name,
+        } => {
+            index::create_index(args.rocks, &mut opts, name);
+        }
         _ => panic!("unsupported"),
     }
 

@@ -13,11 +13,10 @@ serde = { version = "1", features = ["derive"] }
 ethers = { version = "1", features = ["ws"] }
 crossbeam = "0.8"
 rocksdb = "0.20.1"
-clap = { version = "4.1.4", features = ["derive"] }
+clap = { version = "4.2", features = ["derive"] }
 num_cpus = "1.15.0"
 pretty_env_logger = "0.4.0"
 log = "0.4.17"
-rustpython-vm = { git = "https://github.com/RustPython/RustPython", version = "0.2.0" }
 hashbrown = "0.13.2"
 rug = "1.19.1"
 bigdecimal = "0.3.0"

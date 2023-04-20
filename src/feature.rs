@@ -235,7 +235,6 @@ impl FeatureExtracter {
 
         let mut handles = Vec::new();
         assert_eq!(result.len(), 1);
-        log::debug!("{:?}", result);
 
         if let QueryOutputValue::Vertices(vertices) = result[0].clone() {
             assert!(vertices.len() > 0);
@@ -262,7 +261,7 @@ impl FeatureExtracter {
         f_output: Arc<Mutex<csv::Writer<File>>>,
         wei_in_eth: BigDecimal,
     ) {
-        log::debug!("{:?}", v);
+        // log::debug!("{:?}", v);
 
         let out_q = SpecificVertexQuery::single(v.id).outbound().unwrap();
         // .with_property(Identifier::new("details").unwrap()).unwrap();
@@ -314,8 +313,6 @@ impl FeatureExtracter {
 
         let in_q = SpecificVertexQuery::single(v.id)
             .inbound()
-            .unwrap()
-            .with_property(Identifier::new("details").unwrap())
             .unwrap();
         let in_e = db.get(in_q).unwrap();
 

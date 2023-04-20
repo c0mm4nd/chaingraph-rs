@@ -156,6 +156,9 @@ impl Linker {
     pub async fn new(ethereum: String, path: String, opts: &mut rocksdb::Options) -> Self {
         opts.set_disable_auto_compactions(true);
         opts.set_write_buffer_size(0x80000000); // 2G
+        // opts.set_enable_blob_files(true);
+        // opts.set_enable_blob_gc(false);
+        // opts.set_blob_compression_type(rocksdb::DBCompressionType::None);
         opts.prepare_for_bulk_load();
 
         let provider = Provider::<Ws>::connect(ethereum).await.unwrap();
@@ -216,7 +219,7 @@ impl Linker {
 
                                 let to_id = utils::h160_to_uuid(&to);
                                 let v = Vertex::with_id(
-                                    from_id,
+                                    to_id,
                                     Identifier::new(ethers::utils::to_checksum(&to, None)).unwrap(),
                                 );
                                 items.push(indradb::BulkInsertItem::Vertex(v));
