@@ -11,6 +11,7 @@ mod repair;
 mod subgraph;
 mod utils;
 mod index;
+mod eth_common;
 
 extern crate pretty_env_logger;
 
@@ -58,7 +59,7 @@ enum Action {
         output: String,
 
         /// output filename
-        #[arg(value_enum, short, long, default_value_t = subgraph::GraphType::CsvAdj)]
+        #[arg(value_enum, short, long, default_value_t = subgraph::GraphType::CsvEdgelist)]
         graph_type: subgraph::GraphType,
 
         /// output filename
@@ -66,8 +67,12 @@ enum Action {
         v_type: subgraph::VType,
 
         /// output filename
-        #[arg(value_enum, short, long, default_value_t = subgraph::Direction::Both)]
+        #[arg(value_enum, long, default_value_t = subgraph::Direction::Both)]
         direction: subgraph::Direction,
+
+        /// carry props rather than txhash
+        #[arg(long, value_delimiter=',')]
+        with_props: Vec<String>,
     },
     Dump {},
     Repair {},
@@ -141,6 +146,7 @@ fn main() {
             graph_type,
             v_type,
             direction,
+            with_props: with_prop,
         } => {
             if let Some(input) = input {
                 let content = fs::read_to_string(input).unwrap();
@@ -156,6 +162,7 @@ fn main() {
                 graph_type,
                 v_type,
                 direction,
+                with_prop,
             )
         }
         Action::Dump {} => dump::json(args.rocks, &opts),

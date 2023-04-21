@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::{link::TransactionInfo, utils};
+use crate::{utils, eth_common::TransactionInfo};
 use bigdecimal::{BigDecimal, ToPrimitive, Zero};
 use ethers::{prelude::*, providers::Provider, utils::WEI_IN_ETHER};
 use indradb::{
