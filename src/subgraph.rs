@@ -146,17 +146,17 @@ fn run_hop(
                             let val = property.value.0.as_ref();
                             let tx: TransactionInfo = serde_json::from_value(val.clone()).unwrap();
                             let mut attrs = serde_json::Map::with_capacity(with_props.len());
-                            attrs.insert("blockNumber".to_owned(), tx.block_number.unwrap().as_u64().into());
+                            attrs.insert("block_number".to_owned(), tx.block_number.unwrap().as_u64().into());
                             attrs.insert("value".to_owned(),  (utils::u256_to_bigdecimal(tx.value) / utils::u256_to_bigdecimal(WEI_IN_ETHER)).to_f64().into());
                             attrs.insert("gas".to_owned(),  (utils::u256_to_bigdecimal(tx.gas) / utils::u256_to_bigdecimal(WEI_IN_ETHER)).to_f64().into());
                             attrs.insert("gas_price".to_owned(),  (utils::u256_to_bigdecimal(tx.gas) / utils::u256_to_bigdecimal(WEI_IN_ETHER)).to_f64().into());
                             attrs.insert("gas_used".to_owned(),  (utils::u256_to_bigdecimal(tx.gas_used.unwrap()) / utils::u256_to_bigdecimal(WEI_IN_ETHER)).to_f64().into());
 
                             // output.write_record([from, to.t.as_str(), serde_json::to_string(&attrs).unwrap().as_str()]).unwrap();
-                            output.write_all((vec![from, &to.t,  serde_json::to_string(&attrs).unwrap().as_str()].join(",") + "\n").as_bytes()).unwrap();
+                            output.write_all((vec![from, &to.t,  serde_json::to_string(&attrs).unwrap().as_str()].join(" ") + "\n").as_bytes()).unwrap();
                         } else {
                             // output.write_record([from, to.t.as_str(), ]).unwrap();
-                            output.write_all((vec![from, &to.t,  &e.t].join(",") + "\n").as_bytes()).unwrap();
+                            output.write_all((vec![from, &to.t,  &e.t].join(" ") + "\n").as_bytes()).unwrap();
                         }
 
                         next_hop_vertices.push(to.to_owned());
