@@ -28,7 +28,8 @@ struct Args {
 
 #[derive(clap::Subcommand, Debug)]
 enum Action {
-    Insert {
+    /// load the csv file into the graph database
+    Load {
         /// CSV File Path
         #[arg(short, long)]
         csv: String,
@@ -41,6 +42,7 @@ enum Action {
         #[arg(short, long, default_value_t = 10_000)]
         bulk: usize,
     },
+    /// load the subgraph from the graph database
     Subgraph {
         /// contains the verteies
         #[arg(short, long)]
@@ -50,7 +52,7 @@ enum Action {
         #[arg(short, long)]
         input: Option<String>,
 
-        /// Max hop count
+        /// max hop count
         #[arg(long, default_value_t = 1)]
         hop: usize,
 
@@ -58,15 +60,15 @@ enum Action {
         #[arg(short, long, default_value = "subgraph.csv")]
         output: String,
 
-        /// output filename
+        /// the graph file type of the output
         #[arg(value_enum, short, long, default_value_t = subgraph::GraphType::CsvEdgelist)]
         graph_type: subgraph::GraphType,
 
-        /// output filename
+        /// the vertex type of the input
         #[arg(value_enum, long, default_value_t = subgraph::VType::ETHAddress)]
         v_type: subgraph::VType,
 
-        /// output filename
+        /// the subgraph direction
         #[arg(value_enum, long, default_value_t = subgraph::Direction::Both)]
         direction: subgraph::Direction,
 
@@ -74,9 +76,13 @@ enum Action {
         #[arg(long, value_delimiter=',')]
         with_props: Vec<String>,
     },
+    /// dump the graph database as json
     Dump {},
+    /// repair the rocksdb
     Repair {},
+    /// compact the rocksdb
     Compact {},
+    /// extract vertex features
     Feature {
         /// contains the verteies
         #[arg(short, long)]
@@ -90,18 +96,23 @@ enum Action {
         #[arg(short, long, default_value = "features.csv")]
         feature_output: String,
     },
+    /// link with a ethereum node
     Link {
-        /// contains the verteies
+        /// the ethereum endpoint url
         #[arg(short, long, default_value = "http://127.0.0.1:8545")]
         ethereum: String,
 
+        /// thread count
         #[arg(short, long, default_value_t = 0)]
         thread_count: usize,
 
+        /// the ending of the link sync
         #[arg(long, default_value_t = 0)]
         end: usize,
     },
+    /// create an index on the property
     Index {
+        /// field name
         #[arg(short, long)]
         name: String,
     }
@@ -135,7 +146,7 @@ fn main() {
     // log::warn!("all node: {:?}", v_count);
 
     match args.action {
-        Action::Insert { csv, fail, bulk } => {
+        Action::Load { csv, fail, bulk } => {
             load::bulk_insert(args.rocks, &mut opts, csv, fail, bulk)
         }
         Action::Subgraph {
