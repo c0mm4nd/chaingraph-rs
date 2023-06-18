@@ -4,14 +4,15 @@ use clap::{arg, command, Parser};
 use rocksdb::DB;
 
 mod dump;
+mod eth_common;
 mod feature;
+mod index;
 mod link;
 mod load;
 mod repair;
 mod subgraph;
+mod unique;
 mod utils;
-mod index;
-mod eth_common;
 
 extern crate pretty_env_logger;
 
@@ -73,7 +74,7 @@ enum Action {
         direction: subgraph::Direction,
 
         /// carry props rather than txhash
-        #[arg(long, value_delimiter=',')]
+        #[arg(long, value_delimiter = ',')]
         with_props: Vec<String>,
     },
     /// dump the graph database as json
@@ -115,7 +116,21 @@ enum Action {
         /// field name
         #[arg(short, long)]
         name: String,
-    }
+    },
+    /// extract unique vertices/addresses from the file
+    Edgelist {
+        /// file name
+        #[command(subcommand)]
+        action: EdgelistAction,
+    },
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum EdgelistAction {
+    Unique { 
+        #[arg(short, long)]
+        filename: String 
+    },
 }
 
 fn main() {
@@ -230,11 +245,12 @@ fn main() {
                 let linker = link::Linker::new(ethereum, args.rocks, &mut opts).await;
                 linker.sync(thread_count, end).await;
             }),
-        Action::Index {
-            name,
-        } => {
+        Action::Index { name } => {
             index::create_index(args.rocks, &mut opts, name);
         }
+        Action::Edgelist { action } => match action {
+            EdgelistAction::Unique { filename } => unique::extract_unique_vertices(filename),
+        },
         _ => panic!("unsupported"),
     }
 

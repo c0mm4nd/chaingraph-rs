@@ -206,10 +206,10 @@ pub struct FeatureExtracter {
 
 impl FeatureExtracter {
     pub fn new(path: String, opts: &mut Options, f_output: String) -> Self {
-        opts.optimize_for_point_lookup(0x100000000);
-        opts.set_optimize_filters_for_hits(true);
-        opts.optimize_level_style_compaction(0x100000000);
-        opts.set_memtable_whole_key_filtering(true);
+        // opts.optimize_for_point_lookup(0x100000000);
+        // opts.set_optimize_filters_for_hits(true);
+        // opts.optimize_level_style_compaction(0x100000000);
+        // opts.set_memtable_whole_key_filtering(true);
 
         let db = RocksdbDatastore::new_db_with_options(path, opts).unwrap();
 

@@ -1,7 +1,8 @@
 # ChainGraph
 
-Build and Query the blockchain transaction network
-written in rust.
+Build and Query the blockchain **transaction** network.
+
+chaingraph-rs is written in rust, aiming to do fast query on the giant transaction network
 
 ## Build
 
@@ -81,3 +82,9 @@ Options:
   -f, --feature-output <FEATURE_OUTPUT>  output filename [default: features.csv]
   -h, --help                             Print help
 ```
+
+## FAQ
+
+`Error { message: "IO error: While open a file for random read: ../eth_graph_16800000_fix_create/007558.sst: Too many open files" }`
+
+suggest using `root`, try `ulimit -n 65535` or daemon

@@ -14,8 +14,8 @@ use uuid::Uuid;
 #[derive(clap::ValueEnum, Clone, Copy, Debug)]
 pub enum GraphType {
     CsvEdgelist,
-    CsvNodes,
-    Rdf,
+    // CsvNodes, // TODO
+    // Rdf, // TODO
 }
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug)]
