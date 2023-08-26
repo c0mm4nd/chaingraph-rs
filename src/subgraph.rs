@@ -208,10 +208,10 @@ fn run_hop(
                             attrs.insert("gas_used".to_owned(),  (utils::u256_to_bigdecimal(tx.gas_used.unwrap()) / utils::u256_to_bigdecimal(WEI_IN_ETHER)).to_f64().into());
                             
                             // output.write_record([from.t.as_str(), to, serde_json::to_string(&attrs).unwrap().as_str()]).unwrap();
-                            output.write_all((vec![from.t.as_str() , to,  serde_json::to_string(&attrs).unwrap().as_str()].join(",") + "\n").as_bytes()).unwrap();
+                            output.write_all((vec![from.t.as_str() , to,  serde_json::to_string(&attrs).unwrap().as_str()].join(" ") + "\n").as_bytes()).unwrap();
                         } else {
                             // output.write_record([from.t.as_str(), to, &e.t]).unwrap();
-                            output.write_all((vec![from.t.as_str() , to, &e.t].join(",") + "\n").as_bytes()).unwrap();
+                            output.write_all((vec![from.t.as_str() , to, &e.t].join(" ") + "\n").as_bytes()).unwrap();
                         } 
 
                         next_hop_vertices.push(from.to_owned());

@@ -172,7 +172,7 @@ fn main() {
             graph_type,
             v_type,
             direction,
-            with_props: with_prop,
+            with_props,
         } => {
             if let Some(input) = input {
                 let content = fs::read_to_string(input).unwrap();
@@ -188,7 +188,7 @@ fn main() {
                 graph_type,
                 v_type,
                 direction,
-                with_prop,
+                with_props,
             )
         }
         Action::Dump {} => dump::json(args.rocks, &opts),

@@ -12,7 +12,7 @@ csv = "1.1"
 serde = { version = "1", features = ["derive"] }
 ethers = { version = "1", features = ["ws"] }
 crossbeam = "0.8"
-rocksdb = "0.20.1"
+rocksdb = "0.21"
 clap = { version = "4.2", features = ["derive"] }
 num_cpus = "1.15.0"
 pretty_env_logger = "0.4.0"
